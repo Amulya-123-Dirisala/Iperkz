@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPerkz Support Chat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 420px;
+            height: 90vh;
+            max-height: 700px;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .chat-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .chat-header p {
+            font-size: 13px;
+            opacity: 0.9;
+        }
+
+        .logo {
+            width: 50px;
+            height: 50px;
+            background: white;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        /* Messages Area */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.bot {
+            justify-content: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 85%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message-content a {
+            color: #4CAF50;
+            text-decoration: underline;
+            word-break: break-all;
+        }
+
+        .message.user .message-content a {
+            color: #fff;
+        }
+
+        /* Typing Indicator */
+        .typing-indicator {
+            display: none;
+            padding: 15px;
+        }
+
+        .typing-indicator.show {
+            display: flex;
+        }
+
+        .typing-dots {
+            background: white;
+            padding: 12px 20px;
+            border-radius: 18px;
+            display: flex;
+            gap: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+        }
+
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            padding: 10px 20px;
+            background: #fff;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .quick-btn {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            background: #f0f0f0;
+            border: none;
+            border-radius: 20px;
+            font-size: 12px;
+            font-family: 'Roboto', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .quick-btn:hover {
+            background: #4CAF50;
+            color: white;
+        }
+
+        /* Map Modal */
+        .map-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .map-modal.show {
+            display: flex;
+        }
+
+        .map-container {
+            background: white;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .map-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .map-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .map-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .map-body {
+            padding: 0;
+        }
+
+        .map-body iframe {
+            width: 100%;
+            height: 300px;
+            border: none;
+        }
+
+        .tracking-info {
+            padding: 15px 20px;
+            background: #f9f9f9;
+        }
+
+        .tracking-info h4 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+
+        .tracking-step {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+
+        .tracking-step.completed {
+            color: #4CAF50;
+        }
+
+        .tracking-step.current {
+            color: #2196F3;
+            font-weight: bold;
+        }
+
+        .tracking-step.pending {
+            color: #999;
+        }
+
+        .tracking-step span {
+            margin-left: 10px;
+        }
+
+        .driver-info {
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .driver-info p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+
+        /* Input Area */
+        .chat-input {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            font-family: 'Roboto', sans-serif;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .chat-input input:focus {
+            border-color: #4CAF50;
+        }
+
+        .chat-input button {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .chat-input button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+        }
+
+        .chat-input button svg {
+            width: 22px;
+            height: 22px;
+            fill: white;
+        }
+
+        /* Scrollbar */
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-messages::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+
+        /* Footer */
+        .chat-footer {
+            text-align: center;
+            padding: 10px;
+            font-size: 11px;
+            color: #999;
+            background: #fff;
+        }
+
+        .chat-footer a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+
+        /* Markdown-like styling */
+        .message-content strong {
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <div class="logo">🛒</div>
+            <h1>iPerkz Support</h1>
+            <p>Your Indian Grocery Assistant</p>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <!-- Messages will appear here -->
+        </div>
+
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+
+        <div class="quick-actions">
+            <button class="quick-btn" onclick="sendQuickMessage('Track my order')">📦 Track Order</button>
+            <button class="quick-btn" onclick="openMapPrompt()">🗺️ View Map</button>
+            <button class="quick-btn" onclick="openDriverTracking()">🚗 Track Driver</button>
+            <button class="quick-btn" onclick="sendQuickMessage('Delivery information')">🚚 Delivery Info</button>
+            <button class="quick-btn" onclick="sendQuickMessage('Refund policy')">💰 Refunds</button>
+            <button class="quick-btn" onclick="sendQuickMessage('Download app')">📱 Get App</button>
+        </div>
+
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+            <button onclick="sendMessage()" id="sendBtn">
+                <svg viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="chat-footer">
+            Powered by <a href="https://portal.iperkz.com" target="_blank">iPerkz</a>
+        </div>
+    </div>
+
+    <!-- Map Modal -->
+    <div class="map-modal" id="mapModal">
+        <div class="map-container">
+            <div class="map-header">
+                <h3>📍 Order Tracking - #<span id="mapOrderId"></span></h3>
+                <button class="map-close" onclick="closeMap()">&times;</button>
+            </div>
+            <div class="map-body">
+                <iframe id="mapFrame" src="" allowfullscreen></iframe>
+            </div>
+            <div class="tracking-info" id="trackingInfo">
+                <!-- Tracking details will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const typingIndicator = document.getElementById('typingIndicator');
+
+        // Generate unique session ID for this browser session
+        const sessionId = 'session-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+
+        // Send welcome message on load
+        window.addEventListener('load', async () => {
+            await sendToServer('');
+        });
+
+        // Enter key to send
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Quick message buttons
+        function sendQuickMessage(text) {
+            messageInput.value = text;
+            sendMessage();
+        }
+
+        // Format message content (convert markdown-like syntax)
+        function formatMessage(text) {
+            // Convert **bold** to <strong>
+            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Convert URLs to links
+            text = text.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>');
+            
+            // Convert newlines to <br>
+            text = text.replace(/\n/g, '<br>');
+            
+            return text;
+        }
+
+        // Add message to chat
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.innerHTML = formatMessage(content);
+            
+            messageDiv.appendChild(contentDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Show/hide typing indicator
+        function showTyping(show) {
+            typingIndicator.classList.toggle('show', show);
+            if (show) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Send message to server
+        async function sendToServer(message) {
+            showTyping(true);
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, sessionId })
+                });
+                
+                const data = await response.json();
+                
+                showTyping(false);
+                
+                if (data.response) {
+                    addMessage(data.response, false);
+                }
+            } catch (error) {
+                showTyping(false);
+                addMessage('Sorry, there was an error connecting to the server. Please try again.', false);
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage(message, true);
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Send to server
+            await sendToServer(message);
+            
+            // Check if message contains an order ID for map tracking
+            const orderIdMatch = message.match(/\b(\d{5,6})\b/);
+            if (orderIdMatch) {
+                lastOrderId = orderIdMatch[1];
+            }
+        }
+
+        // Track order ID for map feature
+        let lastOrderId = null;
+
+        // Open map tracking modal
+        async function openMap(orderId) {
+            const modal = document.getElementById('mapModal');
+            const mapFrame = document.getElementById('mapFrame');
+            const trackingInfo = document.getElementById('trackingInfo');
+            const mapOrderId = document.getElementById('mapOrderId');
+            
+            try {
+                const response = await fetch(`/api/track/${orderId}?sessionId=${sessionId}`);
+                const data = await response.json();
+                
+                if (data.requiresVerification) {
+                    addMessage('🔐 Please verify your identity first by entering the order ID in the chat.', false);
+                    messageInput.value = orderId;
+                    messageInput.focus();
+                    return;
+                }
+                
+                if (data.success && data.order) {
+                    const order = data.order;
+                    mapOrderId.textContent = orderId;
+                    
+                    // Set map to delivery address
+                    const address = encodeURIComponent(order.address || 'New Jersey');
+                    mapFrame.src = `https://www.google.com/maps?q=${address}&output=embed`;
+                    
+                    // Build tracking info
+                    const steps = ['Order Placed', 'Packing', 'Ready', 'Out for Delivery', 'Delivered'];
+                    const statusStep = getStatusStep(order.status);
+                    
+                    let stepsHtml = '<h4>📊 Delivery Progress</h4>';
+                    steps.forEach((step, index) => {
+                        const stepNum = index + 1;
+                        let stepClass = 'pending';
+                        let icon = '⬜';
+                        if (stepNum < statusStep) {
+                            stepClass = 'completed';
+                            icon = '✅';
+                        } else if (stepNum === statusStep) {
+                            stepClass = 'current';
+                            icon = '➡️';
+                        }
+                        stepsHtml += `<div class="tracking-step ${stepClass}">${icon}<span>${step}</span></div>`;
+                    });
+                    
+                    // Driver info
+                    if (order.driver) {
+                        stepsHtml += `
+                            <div class="driver-info">
+                                <p><strong>🚗 Driver:</strong> ${order.driver}</p>
+                                <p><strong>🗺️ Zone:</strong> ${order.zone}</p>
+                                <p><strong>📍 Your Stop:</strong> #${order.deliverySeq} in route</p>
+                                ${order.packedBy ? `<p><strong>📦 Packed by:</strong> ${order.packedBy}</p>` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    // ETA info
+                    if (order.eta) {
+                        stepsHtml += `
+                            <div class="driver-info" style="background: #e3f2fd; margin-top: 10px;">
+                                <p style="font-size: 16px; font-weight: bold;">⏱️ ETA: ${order.eta}</p>
+                                <p>${order.etaMessage || ''}</p>
+                                ${order.stopsAway !== null && order.stopsAway > 0 ? `<p>🚗 ${order.stopsAway} stop${order.stopsAway > 1 ? 's' : ''} before you</p>` : ''}
+                                ${order.stopsAway === 0 && order.status === 'OUT_FOR_DELIVERY' ? '<p style="color: green; font-weight: bold;">🎉 You are NEXT!</p>' : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    // Live route progress
+                    if (order.routeProgress) {
+                        const rp = order.routeProgress;
+                        const progressBar = '█'.repeat(Math.floor(rp.progressPercent/10)) + '░'.repeat(10-Math.floor(rp.progressPercent/10));
+                        stepsHtml += `
+                            <div class="driver-info" style="background: #fff3e0; margin-top: 10px;">
+                                <p style="font-weight: bold;">📊 Live Route Progress</p>
+                                <p>[${progressBar}] ${rp.progressPercent}%</p>
+                                <p>✅ ${rp.completedStops}/${rp.totalStops} deliveries completed</p>
+                                ${rp.currentStopAddress ? `<p>📍 Driver at: ${rp.currentStopAddress}</p>` : ''}
+                                ${rp.lastDeliveredAddress ? `<p>✓ Last delivery: ${rp.lastDeliveredAddress}</p>` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    // Directions link
+                    if (order.directionsUrl) {
+                        stepsHtml += `<p style="margin-top:10px;"><a href="${order.directionsUrl}" target="_blank" style="color: #4CAF50; text-decoration: none;">🚗 Get Directions from Store →</a></p>`;
+                    }
+                    
+                    stepsHtml += `<p style="margin-top:15px;font-size:12px;color:#666;">📍 Delivering to: ${order.address || 'N/A'}</p>`;
+                    
+                    trackingInfo.innerHTML = stepsHtml;
+                    modal.classList.add('show');
+                }
+            } catch (error) {
+                console.error('Error loading tracking:', error);
+            }
+        }
+
+        function getStatusStep(status) {
+            const steps = { 'PLACED': 1, 'STARTED': 2, 'COMPLETED': 3, 'OUT_FOR_DELIVERY': 4, 'DELIVERED': 5 };
+            return steps[status] || 1;
+        }
+
+        function closeMap() {
+            document.getElementById('mapModal').classList.remove('show');
+            document.getElementById('mapFrame').src = '';
+        }
+
+        // Close modal on background click
+        document.getElementById('mapModal').addEventListener('click', function(e) {
+            if (e.target === this) closeMap();
+        });
+
+        // Open map with prompt for order ID
+        function openMapPrompt() {
+            if (lastOrderId) {
+                openMap(lastOrderId);
+            } else {
+                const orderId = prompt('Enter your Order ID to view on map:');
+                if (orderId && /^\d{5,6}$/.test(orderId.trim())) {
+                    openMap(orderId.trim());
+                } else if (orderId) {
+                    alert('Please enter a valid 5-6 digit Order ID');
+                }
+            }
+        }
+
+        // Open driver tracking with route info
+        async function openDriverTracking() {
+            if (lastOrderId) {
+                try {
+                    const response = await fetch(`/api/track/${lastOrderId}?sessionId=${sessionId}`);
+                    const data = await response.json();
+                    
+                    if (data.requiresVerification) {
+                        addMessage('🔐 Please verify your identity first by entering the order ID in the chat.', false);
+                        messageInput.value = lastOrderId;
+                        messageInput.focus();
+                        return;
+                    }
+                    
+                    if (data.success && data.order && data.order.route) {
+                        // Open driver tracking with route context
+                        const trackingUrl = `https://delivery-routes.vercel.app/driver`;
+                        const win = window.open(trackingUrl, '_blank');
+                        
+                        // Show route info to user
+                        addMessage(`🚗 Opening Driver Tracking...\n\n**Your Route:** ${data.order.route}\n**Driver:** ${data.order.driver}\n**Your Stop:** #${data.order.deliverySeq}\n\nLook for route "${data.order.route}" in the driver portal to track your delivery!`, false);
+                    } else {
+                        window.open('https://delivery-routes.vercel.app/driver', '_blank');
+                        addMessage('🚗 Driver tracking portal opened!\n\nTo track your specific delivery, first enter your Order ID so I can find your assigned route.', false);
+                    }
+                } catch (error) {
+                    window.open('https://delivery-routes.vercel.app/driver', '_blank');
+                }
+            } else {
+                const orderId = prompt('Enter your Order ID to track your driver:');
+                if (orderId && /^\d{5,6}$/.test(orderId.trim())) {
+                    lastOrderId = orderId.trim();
+                    openDriverTracking();
+                } else {
+                    window.open('https://delivery-routes.vercel.app/driver', '_blank');
+                    addMessage('🚗 Driver tracking portal opened!\n\nEnter your Order ID in the chat to see which route your order is on.', false);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
