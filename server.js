@@ -382,6 +382,18 @@ async function formatOrderResponse(order) {
         }).join('\n');
     }
     
+    // Delivery proof image (photo taken at delivery)
+    let deliveryProofSection = '';
+    if (order.orderStatus === 'DELIVERED') {
+        if (order.imageUrl) {
+            deliveryProofSection = `\n\n📸 **Delivery Proof Photo:**\n<!--DELIVERY_PROOF:${order.imageUrl}-->`;
+        } else {
+            deliveryProofSection = `\n\n📸 **Delivery Proof:** Photo not available for this order.`;
+        }
+    } else if (order.orderStatus === 'OUT_FOR_DELIVERY') {
+        deliveryProofSection = `\n\n📸 **Delivery Proof:** Photo will be available after delivery.`;
+    }
+    
     // Calculate subtotal
     const subtotal = items.reduce((sum, item) => sum + ((item.salePrice || 0) * (item.count || 1)), 0);
     
@@ -601,6 +613,7 @@ ${perkzUsed > 0 ? `**Perkz Used:** -$${perkzUsed.toFixed(2)}` : ''}
 **━━━━━━━━━━━━━━━━━━━━**
 **Total Charged:** $${total.toFixed(2)}
 **Payment Method:** ${order.paymentMode || 'N/A'}
+${deliveryProofSection}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 📱 **Track Your Order**
@@ -714,15 +727,16 @@ Would you like to try a different order ID?`;
     // Store pending verification
     pendingVerifications.set(sessionId, { orderId, order });
     
-    // Mask phone and email for security
-    const maskedPhone = order.phone ? `***-***-${order.phone.slice(-4)}` : 'N/A';
-    const maskedEmail = order.email ? `${order.email.slice(0, 3)}***@${order.email.split('@')[1] || '***'}` : 'N/A';
+    // Mask all customer info for security - hide everything
+    const maskedPhone = order.phone ? `***-***-****` : 'N/A';
+    const maskedEmail = order.email ? `***@***` : 'N/A';
+    const maskedName = order.firstName ? `${'*'.repeat(order.firstName.length)}` : '***';
     
     return `🔐 **Verification Required**
 
 For your security, I need to verify you own order #${orderId}.
 
-**Order found for:** ${order.firstName || 'Customer'}
+**Order found for:** ${maskedName}
 **Phone on file:** ${maskedPhone}
 **Email on file:** ${maskedEmail}
 

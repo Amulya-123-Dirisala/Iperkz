@@ -124,6 +124,31 @@
             color: #fff;
         }
 
+        /* Delivery Proof Image */
+        .delivery-proof {
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .delivery-proof img {
+            max-width: 250px;
+            max-height: 200px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .delivery-proof img:hover {
+            transform: scale(1.05);
+        }
+
+        .delivery-proof p {
+            font-size: 12px;
+            color: #666;
+            margin-top: 8px;
+        }
+
         /* Typing Indicator */
         .typing-indicator {
             display: none;
@@ -466,6 +491,18 @@
 
         // Format message content (convert markdown-like syntax)
         function formatMessage(text) {
+            // Extract and render delivery proof image
+            const proofMatch = text.match(/<!--DELIVERY_PROOF:(.*?)-->/);
+            if (proofMatch) {
+                const imageUrl = proofMatch[1];
+                const proofHtml = `
+                    <div class="delivery-proof">
+                        <img src="${imageUrl}" alt="Delivery Proof Photo" onclick="openDeliveryProof('${imageUrl}')">
+                        <p>📸 Click to enlarge</p>
+                    </div>`;
+                text = text.replace(/<!--DELIVERY_PROOF:.*?-->/, proofHtml);
+            }
+            
             // Convert **bold** to <strong>
             text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
@@ -476,6 +513,23 @@
             text = text.replace(/\n/g, '<br>');
             
             return text;
+        }
+        
+        // Open delivery proof in modal
+        function openDeliveryProof(imageUrl) {
+            const modal = document.getElementById('mapModal');
+            const frame = document.getElementById('mapFrame');
+            const title = document.querySelector('.map-title');
+            const trackingInfo = document.getElementById('trackingInfo');
+            
+            title.textContent = '📸 Delivery Proof Photo';
+            frame.style.display = 'none';
+            trackingInfo.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <img src="${imageUrl}" style="max-width: 100%; max-height: 70vh; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <p style="margin-top: 15px; color: #666;">✅ Photo taken at delivery</p>
+                </div>`;
+            modal.classList.add('show');
         }
 
         // Add message to chat
