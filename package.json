@@ -1,14 +1,18 @@
 {
   "name": "iperkz-support-agent",
-  "version": "1.0.0",
-  "description": "AI Chat Agent for iPerkz Grocery Delivery Customer Support",
+  "version": "2.0.0",
+  "description": "AI Chat Agent for iPerkz Grocery Delivery Customer Support - Mobile Ready",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "crypto-js": "^4.2.0",
     "express": "^4.18.2",
-    "cors": "^2.8.5"
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^7.2.0",
+    "uuid": "^9.0.1"
   }
 }

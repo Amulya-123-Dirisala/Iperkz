@@ -1,17 +1,72 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const { v4: uuidv4 } = require('uuid');
+const CryptoJS = require('crypto-js');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Security: API Secret for mobile app authentication
+const API_SECRET = process.env.API_SECRET || 'iperkz-mobile-secret-2026';
+const API_VERSION = 'v1';
+
+// CORS configuration for mobile apps and web
+const corsOptions = {
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:8080',
+        'http://localhost:19006', // Expo
+        'https://iperkz.com',
+        'https://*.iperkz.com',
+        'https://portal.iperkz.com',
+        'capacitor://localhost', // Capacitor apps
+        'ionic://localhost', // Ionic apps
+        'http://localhost', // Mobile WebView
+        '*' // Allow all for development - restrict in production
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Device-ID', 'X-App-Version', 'X-Platform']
+};
+
+// Rate limiting for API protection
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: { success: false, error: 'Too many requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false
+});
+
+const strictLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10, // 10 requests per minute for sensitive endpoints
+    message: { success: false, error: 'Rate limit exceeded. Please wait.' }
+});
 
 // Middleware
-app.use(cors());
-app.use(express.json());
+app.use(helmet({
+    contentSecurityPolicy: false, // Disable for embedded maps
+    crossOriginEmbedderPolicy: false
+}));
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Request logging for debugging
+app.use((req, res, next) => {
+    const platform = req.headers['x-platform'] || 'web';
+    const deviceId = req.headers['x-device-id'] || 'unknown';
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - Platform: ${platform}, Device: ${deviceId.slice(0, 8)}...`);
+    next();
+});
 
 // iPerkz API Configuration
 const ORDERS_API_URL = 'https://delivery-routes.vercel.app/api/orders-by-criteria';
+const DRIVER_LOCATION_API = 'https://delivery-routes.vercel.app/api/driver-location';
 const STORE_ID = '25';
 const IOS_APP = 'https://apps.apple.com/us/app/iperkz/id1512501611';
 const ANDROID_APP = 'https://play.google.com/store/apps/details?id=com.appisoft.perkz';
@@ -22,7 +77,9 @@ let lastFetchTime = 0;
 const CACHE_DURATION = 30000; // 30 seconds
 
 // Customer verification sessions (phone/email -> verified order IDs)
+// Using Map with expiration for security
 const customerSessions = new Map();
+const SESSION_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 
 // Normalize phone number for comparison
 function normalizePhone(phone) {
@@ -36,35 +93,92 @@ function normalizeEmail(email) {
     return email.toLowerCase().trim();
 }
 
-// Verify customer owns the order
+// Normalize name for comparison (handles various formats)
+function normalizeName(name) {
+    if (!name) return '';
+    return name.toLowerCase().trim()
+        .replace(/[^a-z\s]/g, '') // Remove non-letters except spaces
+        .replace(/\s+/g, ' '); // Normalize multiple spaces
+}
+
+// Verify customer owns the order - IMPROVED for better matching
 function verifyCustomerOwnership(order, identifier) {
     if (!order || !identifier) return false;
     
-    const normalizedId = identifier.toLowerCase().trim();
+    const input = identifier.trim();
+    const inputLower = input.toLowerCase();
+    
+    // Get order data
     const orderPhone = normalizePhone(order.phone);
     const orderEmail = normalizeEmail(order.email);
-    const inputPhone = normalizePhone(identifier);
+    const firstName = normalizeName(order.firstName);
+    const lastName = normalizeName(order.lastName);
+    const fullName = `${firstName} ${lastName}`.trim();
+    const inputPhone = normalizePhone(input);
+    const inputNormalized = normalizeName(input);
     
-    // Check phone match (last 4 digits or full)
-    if (orderPhone && inputPhone) {
-        if (orderPhone === inputPhone || orderPhone.endsWith(inputPhone) || inputPhone.endsWith(orderPhone.slice(-4))) {
+    console.log(`[Verification] Checking: "${input}" against order data`);
+    console.log(`[Verification] Order - Phone: ${orderPhone}, Email: ${orderEmail}, FirstName: "${firstName}", LastName: "${lastName}"`);
+    
+    // 1. Check phone match (full number, last 4 digits, or any matching sequence)
+    if (orderPhone && inputPhone && inputPhone.length >= 4) {
+        if (orderPhone === inputPhone || 
+            orderPhone.endsWith(inputPhone) || 
+            orderPhone.includes(inputPhone) ||
+            inputPhone.endsWith(orderPhone.slice(-4))) {
+            console.log(`[Verification] ✓ Phone match`);
             return true;
         }
     }
     
-    // Check email match
-    if (orderEmail && normalizedId.includes('@')) {
-        if (orderEmail === normalizedId || orderEmail.startsWith(normalizedId.split('@')[0])) {
+    // 2. Check email match (full email or username part)
+    if (orderEmail && inputLower.length >= 3) {
+        const emailUsername = orderEmail.split('@')[0];
+        if (orderEmail === inputLower || 
+            emailUsername === inputLower ||
+            orderEmail.includes(inputLower) ||
+            inputLower.includes(emailUsername)) {
+            console.log(`[Verification] ✓ Email match`);
             return true;
         }
     }
     
-    // Check name match (first name)
-    const firstName = (order.firstName || '').toLowerCase().trim();
-    if (firstName && normalizedId === firstName) {
-        return true;
+    // 3. Check first name match (flexible - contains, starts with, or exact)
+    if (firstName && inputNormalized.length >= 2) {
+        if (firstName === inputNormalized ||
+            firstName.startsWith(inputNormalized) ||
+            inputNormalized.startsWith(firstName) ||
+            firstName.includes(inputNormalized) ||
+            inputNormalized.includes(firstName)) {
+            console.log(`[Verification] ✓ First name match`);
+            return true;
+        }
     }
     
+    // 4. Check last name match
+    if (lastName && inputNormalized.length >= 2) {
+        if (lastName === inputNormalized ||
+            lastName.startsWith(inputNormalized) ||
+            inputNormalized.startsWith(lastName) ||
+            lastName.includes(inputNormalized) ||
+            inputNormalized.includes(lastName)) {
+            console.log(`[Verification] ✓ Last name match`);
+            return true;
+        }
+    }
+    
+    // 5. Check full name match
+    if (fullName && inputNormalized.length >= 3) {
+        if (fullName === inputNormalized ||
+            fullName.includes(inputNormalized) ||
+            inputNormalized.includes(firstName) ||
+            inputNormalized.includes(lastName)) {
+            console.log(`[Verification] ✓ Full name match`);
+            return true;
+        }
+    }
+    
+    console.log(`[Verification] ✗ No match found`);
     return false;
 }
 
@@ -115,6 +229,38 @@ async function fetchOrders() {
     }
     
     return ordersCache || [];
+}
+
+// Fetch driver locations from API
+async function fetchDriverLocations() {
+    try {
+        const response = await fetch(DRIVER_LOCATION_API);
+        const data = await response.json();
+        
+        if (data && data.success && data.locations) {
+            console.log(`[API] Fetched ${data.locations.length} driver locations`);
+            return data.locations;
+        }
+    } catch (error) {
+        console.error('[API] Error fetching driver locations:', error.message);
+    }
+    return [];
+}
+
+// Find driver by route name
+async function findDriverByRoute(routeName) {
+    if (!routeName) return null;
+    
+    const locations = await fetchDriverLocations();
+    const cleanRoute = routeName.replace(/"/g, '').toLowerCase();
+    
+    // Find driver whose name matches the route pattern
+    const driver = locations.find(loc => {
+        const driverName = (loc.driver_name || '').toLowerCase();
+        return driverName.includes(cleanRoute.split('-')[0]) || cleanRoute.includes(driverName.split('-')[0]);
+    });
+    
+    return driver;
 }
 
 // Find order by ID
@@ -997,8 +1143,455 @@ app.get('/api/track/:orderId', async (req, res) => {
     }
 });
 
+// Get all active driver locations
+app.get('/api/drivers', apiLimiter, async (req, res) => {
+    console.log('[API] Fetching all driver locations');
+    const locations = await fetchDriverLocations();
+    res.json({ success: true, drivers: locations });
+});
+
+// Get driver location for a specific order
+app.get('/api/driver-location/:orderId', apiLimiter, async (req, res) => {
+    const orderId = req.params.orderId;
+    const sessionId = req.query.sessionId || req.headers['x-session-id'] || 'default-session';
+    console.log(`[Track] Driver location request for order #${orderId}`);
+    
+    // Check if session is verified for this order
+    const verifiedOrders = customerSessions.get(sessionId);
+    if (!verifiedOrders || !verifiedOrders.has(orderId)) {
+        res.json({ 
+            success: false, 
+            error: 'Please verify your identity first',
+            requiresVerification: true,
+            code: 'VERIFICATION_REQUIRED'
+        });
+        return;
+    }
+    
+    const order = await findOrderById(orderId);
+    
+    if (!order) {
+        res.json({ success: false, error: 'Order not found', code: 'ORDER_NOT_FOUND' });
+        return;
+    }
+    
+    if (order.orderStatus !== 'OUT_FOR_DELIVERY') {
+        res.json({ 
+            success: false, 
+            error: 'Driver location available only when out for delivery',
+            orderStatus: order.orderStatus,
+            code: 'NOT_OUT_FOR_DELIVERY'
+        });
+        return;
+    }
+    
+    const driverInfo = formatDriverName(order.deliveryAssociate);
+    if (!driverInfo) {
+        res.json({ success: false, error: 'No driver assigned', code: 'NO_DRIVER' });
+        return;
+    }
+    
+    // Find driver location
+    const driverLocation = await findDriverByRoute(driverInfo.route);
+    const routeProgress = await getRouteProgress(driverInfo.route);
+    
+    res.json({
+        success: true,
+        order: {
+            orderId: order.customerOrderId,
+            status: order.orderStatus,
+            address: order.address,
+            deliverySeq: order.deliverySeq,
+            customerName: `${order.firstName || ''} ${order.lastName || ''}`.trim()
+        },
+        driver: {
+            name: driverInfo.driver,
+            zone: driverInfo.zone,
+            route: driverInfo.route,
+            location: driverLocation ? {
+                latitude: parseFloat(driverLocation.latitude),
+                longitude: parseFloat(driverLocation.longitude),
+                heading: driverLocation.heading,
+                speed: driverLocation.speed,
+                lastUpdated: driverLocation.last_updated,
+                isActive: driverLocation.is_active
+            } : null
+        },
+        routeProgress: routeProgress ? {
+            totalStops: routeProgress.totalStops,
+            completedStops: routeProgress.completedStops,
+            progressPercent: routeProgress.progressPercent,
+            currentStopSeq: routeProgress.currentStopSeq
+        } : null
+    });
+});
+
+// ============================================
+// MOBILE API ENDPOINTS (v1)
+// ============================================
+
+// Mobile: Generate session token
+app.post('/api/v1/session', apiLimiter, (req, res) => {
+    const { deviceId, platform, appVersion } = req.body;
+    
+    if (!deviceId) {
+        return res.status(400).json({ 
+            success: false, 
+            error: 'Device ID required',
+            code: 'MISSING_DEVICE_ID'
+        });
+    }
+    
+    // Generate secure session token
+    const sessionToken = uuidv4();
+    const timestamp = Date.now();
+    
+    // Create session with expiry
+    const sessionData = {
+        deviceId,
+        platform: platform || 'unknown',
+        appVersion: appVersion || '1.0.0',
+        createdAt: timestamp,
+        expiresAt: timestamp + SESSION_EXPIRY,
+        verifiedOrders: new Set()
+    };
+    
+    customerSessions.set(sessionToken, sessionData);
+    
+    console.log(`[Mobile] New session created for device ${deviceId.slice(0, 8)}... on ${platform}`);
+    
+    res.json({
+        success: true,
+        sessionToken,
+        expiresIn: SESSION_EXPIRY,
+        apiVersion: API_VERSION
+    });
+});
+
+// Mobile: Chat endpoint with session validation
+app.post('/api/v1/chat', apiLimiter, async (req, res) => {
+    const { message } = req.body;
+    const sessionToken = req.headers['authorization']?.replace('Bearer ', '') || req.body.sessionId;
+    
+    if (!sessionToken) {
+        return res.status(401).json({
+            success: false,
+            error: 'Session token required',
+            code: 'UNAUTHORIZED'
+        });
+    }
+    
+    // Validate session
+    const session = customerSessions.get(sessionToken);
+    if (!session) {
+        // For backward compatibility, create temporary session
+        customerSessions.set(sessionToken, { verifiedOrders: new Set() });
+    } else if (session.expiresAt && Date.now() > session.expiresAt) {
+        customerSessions.delete(sessionToken);
+        return res.status(401).json({
+            success: false,
+            error: 'Session expired',
+            code: 'SESSION_EXPIRED'
+        });
+    }
+    
+    console.log(`[Mobile Chat] Session ${sessionToken.slice(0, 8)}...: ${message}`);
+    
+    const response = await processMessage(message, sessionToken);
+    
+    res.json({ 
+        success: true, 
+        response,
+        timestamp: Date.now()
+    });
+});
+
+// Mobile: Track order
+app.get('/api/v1/orders/:orderId/track', apiLimiter, async (req, res) => {
+    const orderId = req.params.orderId;
+    const sessionToken = req.headers['authorization']?.replace('Bearer ', '') || req.query.sessionId;
+    
+    if (!sessionToken) {
+        return res.status(401).json({
+            success: false,
+            error: 'Session token required',
+            code: 'UNAUTHORIZED'
+        });
+    }
+    
+    // Check verification
+    const session = customerSessions.get(sessionToken);
+    const verifiedOrders = session?.verifiedOrders || session;
+    
+    if (!verifiedOrders || !(verifiedOrders instanceof Set ? verifiedOrders.has(orderId) : verifiedOrders.has?.(orderId))) {
+        return res.json({
+            success: false,
+            error: 'Please verify your identity first',
+            code: 'VERIFICATION_REQUIRED',
+            requiresVerification: true
+        });
+    }
+    
+    const order = await findOrderById(orderId);
+    
+    if (!order) {
+        return res.json({ 
+            success: false, 
+            error: 'Order not found',
+            code: 'ORDER_NOT_FOUND'
+        });
+    }
+    
+    const driverInfo = formatDriverName(order.deliveryAssociate);
+    const estimate = await getDeliveryEstimate(order, driverInfo);
+    const directionsUrl = getDirectionsUrl(order.storeAddress1, order.address);
+    
+    let routeProgress = null;
+    let driverLocation = null;
+    
+    if (driverInfo && driverInfo.route) {
+        routeProgress = await getRouteProgress(driverInfo.route);
+        if (order.orderStatus === 'OUT_FOR_DELIVERY') {
+            driverLocation = await findDriverByRoute(driverInfo.route);
+        }
+    }
+    
+    res.json({
+        success: true,
+        order: {
+            orderId: order.customerOrderId,
+            status: order.orderStatus,
+            statusDisplay: getStatusDisplay(order.orderStatus),
+            address: order.address,
+            storeAddress: order.storeAddress1,
+            storeName: order.storeName,
+            customerName: `${order.firstName || ''} ${order.lastName || ''}`.trim(),
+            scheduledDelivery: order.requestedDeliveryDateString || order.requestedDeliveryDateStr,
+            deliverySeq: order.deliverySeq,
+            packedBy: order.packingAssociate,
+            items: (order.menuList || []).map(item => ({
+                name: item.menuItemName,
+                quantity: item.count || 1,
+                price: item.salePrice || 0
+            })),
+            total: order.totalSalePrice,
+            deliveryProofImage: order.orderStatus === 'DELIVERED' ? order.imageUrl : null
+        },
+        driver: driverInfo ? {
+            name: driverInfo.driver,
+            zone: driverInfo.zone,
+            route: driverInfo.route,
+            location: driverLocation ? {
+                latitude: parseFloat(driverLocation.latitude),
+                longitude: parseFloat(driverLocation.longitude),
+                heading: driverLocation.heading,
+                speed: driverLocation.speed,
+                lastUpdated: driverLocation.last_updated,
+                isActive: driverLocation.is_active
+            } : null
+        } : null,
+        eta: {
+            display: estimate.eta,
+            minutes: estimate.estimatedMinutes,
+            stopsAway: estimate.stopsAway,
+            message: estimate.message
+        },
+        routeProgress: routeProgress ? {
+            totalStops: routeProgress.totalStops,
+            completedStops: routeProgress.completedStops,
+            progressPercent: routeProgress.progressPercent,
+            currentStopAddress: routeProgress.currentStopAddress
+        } : null,
+        links: {
+            directions: directionsUrl
+        },
+        timestamp: Date.now()
+    });
+});
+
+// Mobile: Verify order ownership
+app.post('/api/v1/orders/:orderId/verify', strictLimiter, async (req, res) => {
+    const orderId = req.params.orderId;
+    const { identifier } = req.body;
+    const sessionToken = req.headers['authorization']?.replace('Bearer ', '') || req.body.sessionId;
+    
+    if (!sessionToken) {
+        return res.status(401).json({
+            success: false,
+            error: 'Session token required',
+            code: 'UNAUTHORIZED'
+        });
+    }
+    
+    if (!identifier) {
+        return res.status(400).json({
+            success: false,
+            error: 'Verification identifier required',
+            code: 'MISSING_IDENTIFIER'
+        });
+    }
+    
+    const order = await findOrderById(orderId);
+    
+    if (!order) {
+        return res.json({
+            success: false,
+            error: 'Order not found',
+            code: 'ORDER_NOT_FOUND'
+        });
+    }
+    
+    const verified = verifyCustomerOwnership(order, identifier);
+    
+    if (verified) {
+        // Get or create session data
+        let session = customerSessions.get(sessionToken);
+        if (!session) {
+            session = { verifiedOrders: new Set() };
+            customerSessions.set(sessionToken, session);
+        }
+        
+        // Add verified order
+        if (session.verifiedOrders) {
+            session.verifiedOrders.add(orderId);
+        } else if (session instanceof Set) {
+            session.add(orderId);
+        } else {
+            // Legacy format
+            customerSessions.set(sessionToken, new Set([orderId]));
+        }
+        
+        console.log(`[Mobile] Order #${orderId} verified for session ${sessionToken.slice(0, 8)}...`);
+        
+        return res.json({
+            success: true,
+            message: 'Verification successful',
+            orderId,
+            canTrack: true
+        });
+    } else {
+        return res.json({
+            success: false,
+            error: 'Verification failed. Please check your information.',
+            code: 'VERIFICATION_FAILED'
+        });
+    }
+});
+
+// Mobile: Get driver live location
+app.get('/api/v1/orders/:orderId/driver-location', apiLimiter, async (req, res) => {
+    const orderId = req.params.orderId;
+    const sessionToken = req.headers['authorization']?.replace('Bearer ', '') || req.query.sessionId;
+    
+    if (!sessionToken) {
+        return res.status(401).json({
+            success: false,
+            error: 'Session token required',
+            code: 'UNAUTHORIZED'
+        });
+    }
+    
+    // Check verification
+    const session = customerSessions.get(sessionToken);
+    const verifiedOrders = session?.verifiedOrders || session;
+    
+    if (!verifiedOrders || !(verifiedOrders instanceof Set ? verifiedOrders.has(orderId) : false)) {
+        return res.json({
+            success: false,
+            error: 'Please verify your identity first',
+            code: 'VERIFICATION_REQUIRED'
+        });
+    }
+    
+    const order = await findOrderById(orderId);
+    
+    if (!order) {
+        return res.json({ success: false, error: 'Order not found', code: 'ORDER_NOT_FOUND' });
+    }
+    
+    if (order.orderStatus !== 'OUT_FOR_DELIVERY') {
+        return res.json({
+            success: false,
+            error: 'Driver location available only when order is out for delivery',
+            orderStatus: order.orderStatus,
+            code: 'NOT_OUT_FOR_DELIVERY'
+        });
+    }
+    
+    const driverInfo = formatDriverName(order.deliveryAssociate);
+    if (!driverInfo) {
+        return res.json({ success: false, error: 'No driver assigned', code: 'NO_DRIVER' });
+    }
+    
+    const driverLocation = await findDriverByRoute(driverInfo.route);
+    const routeProgress = await getRouteProgress(driverInfo.route);
+    
+    let stopsAway = order.deliverySeq;
+    if (routeProgress) {
+        stopsAway = order.deliverySeq - routeProgress.completedStops;
+        if (stopsAway < 0) stopsAway = 0;
+    }
+    
+    res.json({
+        success: true,
+        driver: {
+            name: driverInfo.driver,
+            zone: driverInfo.zone,
+            location: driverLocation ? {
+                latitude: parseFloat(driverLocation.latitude),
+                longitude: parseFloat(driverLocation.longitude),
+                heading: driverLocation.heading,
+                speed: driverLocation.speed,
+                lastUpdated: driverLocation.last_updated,
+                isActive: driverLocation.is_active
+            } : null
+        },
+        delivery: {
+            address: order.address,
+            seq: order.deliverySeq,
+            stopsAway: stopsAway,
+            isNext: stopsAway === 0
+        },
+        routeProgress: routeProgress ? {
+            totalStops: routeProgress.totalStops,
+            completedStops: routeProgress.completedStops,
+            progressPercent: routeProgress.progressPercent
+        } : null,
+        timestamp: Date.now()
+    });
+});
+
+// Health check with version info
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'iPerkz Support Agent is running!' });
+    res.json({ 
+        status: 'ok',
+        service: 'iPerkz Support Agent',
+        version: '2.0.0',
+        apiVersion: API_VERSION,
+        timestamp: Date.now()
+    });
+});
+
+// API info endpoint for mobile apps
+app.get('/api/v1/info', (req, res) => {
+    res.json({
+        success: true,
+        api: {
+            version: API_VERSION,
+            baseUrl: '/api/v1',
+            endpoints: {
+                session: 'POST /api/v1/session',
+                chat: 'POST /api/v1/chat',
+                trackOrder: 'GET /api/v1/orders/:orderId/track',
+                verifyOrder: 'POST /api/v1/orders/:orderId/verify',
+                driverLocation: 'GET /api/v1/orders/:orderId/driver-location'
+            }
+        },
+        apps: {
+            ios: IOS_APP,
+            android: ANDROID_APP
+        }
+    });
 });
 
 // Serve main page
@@ -1006,11 +1599,22 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('[Error]', err.message);
+    res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+    });
+});
+
 // Start server
 app.listen(PORT, () => {
     console.log('');
-    console.log('🛒 iPerkz Support Agent is starting...');
-    console.log(`🌐 Open http://localhost:${PORT} in your browser`);
+    console.log('🛒 iPerkz Support Agent v2.0 - Mobile Ready');
+    console.log(`🌐 Web: http://localhost:${PORT}`);
+    console.log(`📡 API: http://localhost:${PORT}/api/v1`);
     console.log(`📱 iOS: ${IOS_APP}`);
     console.log(`📱 Android: ${ANDROID_APP}`);
     console.log('');

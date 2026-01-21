@@ -2,7 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#4CAF50">
+    <meta name="description" content="iPerkz Customer Support - Track your grocery orders, get delivery updates, and chat with our support team">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    
     <title>iPerkz Support Chat</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
@@ -10,23 +22,30 @@
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
         }
 
         body {
-            font-family: 'Roboto', sans-serif;
+            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
+            min-height: -webkit-fill-available;
             display: flex;
             justify-content: center;
             align-items: center;
-            padding: 20px;
+            padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
         }
 
         .chat-container {
             width: 100%;
             max-width: 420px;
-            height: 90vh;
-            max-height: 700px;
+            height: 100%;
+            max-height: 100vh;
             background: #fff;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
@@ -35,47 +54,67 @@
             overflow: hidden;
         }
 
+        /* Mobile full screen */
+        @media (max-width: 480px) {
+            body {
+                padding: 0;
+                padding-top: env(safe-area-inset-top, 0);
+                padding-bottom: env(safe-area-inset-bottom, 0);
+            }
+            
+            .chat-container {
+                max-width: 100%;
+                border-radius: 0;
+                height: 100vh;
+                height: -webkit-fill-available;
+            }
+        }
+
         /* Header */
         .chat-header {
             background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
             color: white;
-            padding: 20px;
+            padding: 15px 20px;
+            padding-top: max(15px, env(safe-area-inset-top));
             text-align: center;
+            flex-shrink: 0;
         }
 
         .chat-header h1 {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .chat-header p {
-            font-size: 13px;
+            font-size: 12px;
             opacity: 0.9;
         }
 
         .logo {
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 45px;
             background: white;
             border-radius: 50%;
-            margin: 0 auto 10px;
+            margin: 0 auto 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 22px;
         }
 
         /* Messages Area */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 20px;
+            overflow-x: hidden;
+            padding: 15px;
             background: #f5f5f5;
+            -webkit-overflow-scrolling: touch;
         }
 
         .message {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
             display: flex;
             animation: fadeIn 0.3s ease;
         }
@@ -95,7 +134,7 @@
 
         .message-content {
             max-width: 85%;
-            padding: 12px 16px;
+            padding: 10px 14px;
             border-radius: 18px;
             font-size: 14px;
             line-height: 1.5;
@@ -322,6 +361,130 @@
             font-size: 13px;
         }
 
+        /* Live Driver Tracking Modal */
+        .driver-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .driver-modal.show {
+            display: flex;
+        }
+
+        .driver-map-container {
+            background: white;
+            border-radius: 15px;
+            width: 95%;
+            max-width: 700px;
+            height: 85vh;
+            max-height: 600px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .driver-map-header {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .driver-map-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .driver-map-header .live-badge {
+            background: #f44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .driver-map-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        #liveDriverMap {
+            flex: 1;
+            min-height: 300px;
+        }
+
+        .driver-status-bar {
+            padding: 15px;
+            background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+            border-top: 1px solid #90caf9;
+        }
+
+        .driver-eta {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1976D2;
+            margin-bottom: 5px;
+        }
+
+        .driver-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .driver-detail-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .stops-progress {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .stops-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .last-updated {
+            font-size: 11px;
+            color: #666;
+            margin-top: 8px;
+            text-align: right;
+        }
+
         /* Input Area */
         .chat-input {
             padding: 15px 20px;
@@ -462,6 +625,35 @@
             </div>
         </div>
     </div>
+
+    <!-- Live Driver Tracking Modal -->
+    <div class="driver-modal" id="driverModal">
+        <div class="driver-map-container">
+            <div class="driver-map-header">
+                <div>
+                    <h3>🚗 Live Driver Tracking</h3>
+                    <span class="live-badge">● LIVE</span>
+                </div>
+                <button class="driver-map-close" onclick="closeDriverModal()">&times;</button>
+            </div>
+            <div id="liveDriverMap"></div>
+            <div class="driver-status-bar" id="driverStatusBar">
+                <div class="driver-eta" id="driverEta">Loading...</div>
+                <div class="driver-details" id="driverDetails">
+                    <!-- Driver details will be inserted here -->
+                </div>
+                <div class="stops-progress">
+                    <div class="stops-progress-bar" id="stopsProgressBar" style="width: 0%"></div>
+                </div>
+                <div class="last-updated" id="lastUpdated">Updating...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         const chatMessages = document.getElementById('chatMessages');
@@ -734,10 +926,17 @@
         }
 
         // Open driver tracking with route info
+        let driverMap = null;
+        let driverMarker = null;
+        let customerMarker = null;
+        let routeLine = null;
+        let trackingInterval = null;
+        let currentTrackingOrderId = null;
+
         async function openDriverTracking() {
             if (lastOrderId) {
                 try {
-                    const response = await fetch(`/api/track/${lastOrderId}?sessionId=${sessionId}`);
+                    const response = await fetch(`/api/driver-location/${lastOrderId}?sessionId=${sessionId}`);
                     const data = await response.json();
                     
                     if (data.requiresVerification) {
@@ -747,31 +946,194 @@
                         return;
                     }
                     
-                    if (data.success && data.order && data.order.route) {
-                        // Open driver tracking with route context
-                        const trackingUrl = `https://delivery-routes.vercel.app/driver`;
-                        const win = window.open(trackingUrl, '_blank');
-                        
-                        // Show route info to user
-                        addMessage(`🚗 Opening Driver Tracking...\n\n**Your Route:** ${data.order.route}\n**Driver:** ${data.order.driver}\n**Your Stop:** #${data.order.deliverySeq}\n\nLook for route "${data.order.route}" in the driver portal to track your delivery!`, false);
+                    if (data.success && data.driver && data.driver.location) {
+                        // Open live driver tracking modal
+                        openLiveDriverModal(data);
+                    } else if (data.orderStatus && data.orderStatus !== 'OUT_FOR_DELIVERY') {
+                        addMessage(`🚗 **Driver Tracking**\n\nLive driver location is available only when your order is **Out for Delivery**.\n\nCurrent Status: **${data.orderStatus.replace(/_/g, ' ')}**\n\n💡 Once the driver starts delivering, you'll be able to see their live location here!`, false);
                     } else {
-                        window.open('https://delivery-routes.vercel.app/driver', '_blank');
-                        addMessage('🚗 Driver tracking portal opened!\n\nTo track your specific delivery, first enter your Order ID so I can find your assigned route.', false);
+                        addMessage('🚗 **Driver Tracking**\n\nDriver location is not available yet. The driver may be preparing to start the route.\n\nTry again in a few minutes!', false);
                     }
                 } catch (error) {
-                    window.open('https://delivery-routes.vercel.app/driver', '_blank');
+                    console.error('Error fetching driver location:', error);
+                    addMessage('❌ Unable to fetch driver location. Please try again.', false);
                 }
             } else {
                 const orderId = prompt('Enter your Order ID to track your driver:');
                 if (orderId && /^\d{5,6}$/.test(orderId.trim())) {
                     lastOrderId = orderId.trim();
                     openDriverTracking();
-                } else {
-                    window.open('https://delivery-routes.vercel.app/driver', '_blank');
-                    addMessage('🚗 Driver tracking portal opened!\n\nEnter your Order ID in the chat to see which route your order is on.', false);
+                } else if (orderId) {
+                    addMessage('⚠️ Please enter a valid 5-6 digit Order ID to track your driver.', false);
                 }
             }
         }
+
+        function openLiveDriverModal(data) {
+            const modal = document.getElementById('driverModal');
+            const driverEta = document.getElementById('driverEta');
+            const driverDetails = document.getElementById('driverDetails');
+            const stopsProgressBar = document.getElementById('stopsProgressBar');
+            const lastUpdated = document.getElementById('lastUpdated');
+            
+            currentTrackingOrderId = data.order.orderId;
+            
+            modal.classList.add('show');
+            
+            // Initialize map
+            setTimeout(() => {
+                initDriverMap(data);
+                updateDriverStatus(data);
+            }, 100);
+            
+            // Start real-time updates every 10 seconds
+            if (trackingInterval) clearInterval(trackingInterval);
+            trackingInterval = setInterval(() => {
+                refreshDriverLocation();
+            }, 10000);
+        }
+
+        function initDriverMap(data) {
+            const mapContainer = document.getElementById('liveDriverMap');
+            
+            if (driverMap) {
+                driverMap.remove();
+            }
+            
+            const driverLoc = data.driver.location;
+            
+            // Create map centered on driver
+            driverMap = L.map('liveDriverMap').setView([driverLoc.latitude, driverLoc.longitude], 14);
+            
+            // Add tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(driverMap);
+            
+            // Custom driver icon (car emoji)
+            const driverIcon = L.divIcon({
+                className: 'driver-icon',
+                html: '<div style="font-size: 30px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.5));">🚗</div>',
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
+            
+            // Custom customer icon (home)
+            const customerIcon = L.divIcon({
+                className: 'customer-icon',
+                html: '<div style="font-size: 28px; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.5));">🏠</div>',
+                iconSize: [36, 36],
+                iconAnchor: [18, 36]
+            });
+            
+            // Add driver marker
+            driverMarker = L.marker([driverLoc.latitude, driverLoc.longitude], { icon: driverIcon })
+                .addTo(driverMap)
+                .bindPopup(`<b>🚗 ${data.driver.name}</b><br>Your driver is on the way!`);
+            
+            // Add customer location marker (approximate based on address)
+            // For now, we'll geocode later or use a nearby point
+            // We'll show the driver moving towards a general area
+            
+            // Add a circle around driver to show general area
+            L.circle([driverLoc.latitude, driverLoc.longitude], {
+                color: '#2196F3',
+                fillColor: '#2196F3',
+                fillOpacity: 0.1,
+                radius: 200
+            }).addTo(driverMap);
+        }
+
+        function updateDriverStatus(data) {
+            const driverEta = document.getElementById('driverEta');
+            const driverDetails = document.getElementById('driverDetails');
+            const stopsProgressBar = document.getElementById('stopsProgressBar');
+            const lastUpdated = document.getElementById('lastUpdated');
+            
+            const driver = data.driver;
+            const order = data.order;
+            const progress = data.routeProgress;
+            
+            // Calculate ETA based on stops away
+            let stopsAway = 0;
+            if (progress) {
+                stopsAway = order.deliverySeq - progress.completedStops;
+                if (stopsAway < 0) stopsAway = 0;
+            }
+            
+            const etaMinutes = stopsAway * 12; // ~12 min per stop
+            const etaText = stopsAway === 0 ? '🎉 Arriving Now!' : `~${etaMinutes}-${etaMinutes + 15} min`;
+            
+            driverEta.innerHTML = etaText;
+            
+            driverDetails.innerHTML = `
+                <div class="driver-detail-item">🚗 <strong>${driver.name}</strong></div>
+                <div class="driver-detail-item">🗺️ ${driver.zone} Zone</div>
+                <div class="driver-detail-item">📍 Stop #${order.deliverySeq}</div>
+                ${stopsAway > 0 ? `<div class="driver-detail-item">🛑 ${stopsAway} stop${stopsAway > 1 ? 's' : ''} away</div>` : '<div class="driver-detail-item" style="color: #4CAF50; font-weight: bold;">✨ You\'re next!</div>'}
+            `;
+            
+            // Update progress bar
+            if (progress) {
+                const progressPercent = (progress.completedStops / progress.totalStops) * 100;
+                stopsProgressBar.style.width = `${progressPercent}%`;
+            }
+            
+            // Update timestamp
+            if (driver.location && driver.location.lastUpdated) {
+                const updateTime = new Date(driver.location.lastUpdated);
+                lastUpdated.textContent = `Last updated: ${updateTime.toLocaleTimeString()}`;
+            } else {
+                lastUpdated.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+            }
+        }
+
+        async function refreshDriverLocation() {
+            if (!currentTrackingOrderId) return;
+            
+            try {
+                const response = await fetch(`/api/driver-location/${currentTrackingOrderId}?sessionId=${sessionId}`);
+                const data = await response.json();
+                
+                if (data.success && data.driver && data.driver.location) {
+                    // Update marker position with animation
+                    const newLat = data.driver.location.latitude;
+                    const newLng = data.driver.location.longitude;
+                    
+                    if (driverMarker && driverMap) {
+                        driverMarker.setLatLng([newLat, newLng]);
+                        driverMap.panTo([newLat, newLng], { animate: true, duration: 1 });
+                    }
+                    
+                    updateDriverStatus(data);
+                }
+            } catch (error) {
+                console.error('Error refreshing driver location:', error);
+            }
+        }
+
+        function closeDriverModal() {
+            const modal = document.getElementById('driverModal');
+            modal.classList.remove('show');
+            
+            // Stop tracking updates
+            if (trackingInterval) {
+                clearInterval(trackingInterval);
+                trackingInterval = null;
+            }
+            currentTrackingOrderId = null;
+            
+            // Clean up map
+            if (driverMap) {
+                driverMap.remove();
+                driverMap = null;
+            }
+        }
+
+        // Close driver modal on background click
+        document.getElementById('driverModal').addEventListener('click', function(e) {
+            if (e.target === this) closeDriverModal();
+        });
     </script>
 </body>
 </html>
