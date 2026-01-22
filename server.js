@@ -2056,6 +2056,33 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Debug endpoint to check driver assignments
+app.get('/api/debug/driver/:orderId', async (req, res) => {
+    try {
+        const orderId = req.params.orderId;
+        const todaysOrders = await fetchTodaysOrders();
+        const order = todaysOrders.find(o => o.customerOrderId === parseInt(orderId));
+        
+        if (!order) {
+            return res.json({ error: 'Order not found', orderId });
+        }
+        
+        const driverInfo = formatDriverName(order.deliveryAssociate);
+        
+        res.json({
+            orderId: order.customerOrderId,
+            orderStatus: order.orderStatus,
+            deliveryAssociateRaw: order.deliveryAssociate,
+            deliveryAssociateType: typeof order.deliveryAssociate,
+            driverInfo: driverInfo,
+            deliverySeq: order.deliverySeq,
+            apiUsed: TODAYS_ORDERS_API
+        });
+    } catch (error) {
+        res.json({ error: error.message });
+    }
+});
+
 // API info endpoint for mobile apps
 app.get('/api/v1/info', (req, res) => {
     res.json({
