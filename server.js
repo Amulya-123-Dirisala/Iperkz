@@ -1219,11 +1219,14 @@ async function handleVerification(message, sessionId) {
         }
         verifiedOrders.add(orderId);
         
+        // Await the formatOrderResponse since it's async
+        const orderResponse = await formatOrderResponse(order);
+        
         return `✅ **Verification Successful!**
 
 Thank you for verifying your identity.
 
-` + formatOrderResponse(order);
+` + orderResponse;
     } else {
         // Verification failed
         return `❌ **Verification Failed**
