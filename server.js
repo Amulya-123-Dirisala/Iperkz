@@ -99,7 +99,7 @@ function normalizeEmail(email) {
     return email.toLowerCase().trim();
 }
 
-// Normalize name for comparison (handles various formats)
+// Normalize name for comparison (handles various formats) - CASE INSENSITIVE
 function normalizeName(name) {
     if (!name) return '';
     return name.toLowerCase().trim()
@@ -107,14 +107,52 @@ function normalizeName(name) {
         .replace(/\s+/g, ' '); // Normalize multiple spaces
 }
 
-// Verify customer owns the order - IMPROVED for better matching
+// Fuzzy match - checks if characters in input appear in same order in target
+// Allows for typos and partial matches (case-insensitive)
+function fuzzyMatch(input, target, minMatchPercent = 60) {
+    if (!input || !target) return false;
+    
+    const inputLower = input.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const targetLower = target.toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    if (inputLower.length < 2 || targetLower.length < 2) return false;
+    
+    // Exact match
+    if (inputLower === targetLower) return true;
+    
+    // One contains the other
+    if (inputLower.includes(targetLower) || targetLower.includes(inputLower)) return true;
+    
+    // Character sequence match - check if input chars appear in order in target
+    let targetIndex = 0;
+    let matchedChars = 0;
+    for (let i = 0; i < inputLower.length && targetIndex < targetLower.length; i++) {
+        if (inputLower[i] === targetLower[targetIndex]) {
+            matchedChars++;
+            targetIndex++;
+        } else {
+            // Look ahead in target for this character
+            const foundAt = targetLower.indexOf(inputLower[i], targetIndex);
+            if (foundAt !== -1) {
+                matchedChars++;
+                targetIndex = foundAt + 1;
+            }
+        }
+    }
+    
+    // Calculate match percentage
+    const matchPercent = (matchedChars / Math.min(inputLower.length, targetLower.length)) * 100;
+    return matchPercent >= minMatchPercent;
+}
+
+// Verify customer owns the order - CASE INSENSITIVE with fuzzy matching
 function verifyCustomerOwnership(order, identifier) {
     if (!order || !identifier) return false;
     
     const input = identifier.trim();
     const inputLower = input.toLowerCase();
     
-    // Get order data
+    // Get order data (all normalized to lowercase)
     const orderPhone = normalizePhone(order.phone);
     const orderEmail = normalizeEmail(order.email);
     const firstName = normalizeName(order.firstName);
@@ -123,7 +161,7 @@ function verifyCustomerOwnership(order, identifier) {
     const inputPhone = normalizePhone(input);
     const inputNormalized = normalizeName(input);
     
-    console.log(`[Verification] Checking: "${input}" against order data`);
+    console.log(`[Verification] Checking: "${input}" against order data (case-insensitive)`);
     console.log(`[Verification] Order - Phone: ${orderPhone}, Email: ${orderEmail}, FirstName: "${firstName}", LastName: "${lastName}"`);
     
     // 1. Check phone match (full number, last 4 digits, or any matching sequence)
@@ -137,49 +175,62 @@ function verifyCustomerOwnership(order, identifier) {
         }
     }
     
-    // 2. Check email match (full email or username part)
+    // 2. Check email match (case-insensitive - full email or username part)
     if (orderEmail && inputLower.length >= 3) {
         const emailUsername = orderEmail.split('@')[0];
         if (orderEmail === inputLower || 
             emailUsername === inputLower ||
             orderEmail.includes(inputLower) ||
-            inputLower.includes(emailUsername)) {
-            console.log(`[Verification] ✓ Email match`);
+            inputLower.includes(emailUsername) ||
+            fuzzyMatch(inputLower, emailUsername, 70)) {
+            console.log(`[Verification] ✓ Email match (case-insensitive)`);
             return true;
         }
     }
     
-    // 3. Check first name match (flexible - contains, starts with, or exact)
+    // 3. Check first name match (case-insensitive, fuzzy)
     if (firstName && inputNormalized.length >= 2) {
         if (firstName === inputNormalized ||
             firstName.startsWith(inputNormalized) ||
             inputNormalized.startsWith(firstName) ||
             firstName.includes(inputNormalized) ||
-            inputNormalized.includes(firstName)) {
-            console.log(`[Verification] ✓ First name match`);
+            inputNormalized.includes(firstName) ||
+            fuzzyMatch(inputNormalized, firstName, 60)) {
+            console.log(`[Verification] ✓ First name match (case-insensitive)`);
             return true;
         }
     }
     
-    // 4. Check last name match
+    // 4. Check last name match (case-insensitive, fuzzy)
     if (lastName && inputNormalized.length >= 2) {
         if (lastName === inputNormalized ||
             lastName.startsWith(inputNormalized) ||
             inputNormalized.startsWith(lastName) ||
             lastName.includes(inputNormalized) ||
-            inputNormalized.includes(lastName)) {
-            console.log(`[Verification] ✓ Last name match`);
+            inputNormalized.includes(lastName) ||
+            fuzzyMatch(inputNormalized, lastName, 60)) {
+            console.log(`[Verification] ✓ Last name match (case-insensitive)`);
             return true;
         }
     }
     
-    // 5. Check full name match
+    // 5. Check full name match (case-insensitive, fuzzy)
     if (fullName && inputNormalized.length >= 3) {
         if (fullName === inputNormalized ||
             fullName.includes(inputNormalized) ||
             inputNormalized.includes(firstName) ||
-            inputNormalized.includes(lastName)) {
-            console.log(`[Verification] ✓ Full name match`);
+            inputNormalized.includes(lastName) ||
+            fuzzyMatch(inputNormalized, fullName, 50)) {
+            console.log(`[Verification] ✓ Full name match (case-insensitive)`);
+            return true;
+        }
+    }
+    
+    // 6. Try fuzzy match against all possible values
+    if (inputNormalized.length >= 3) {
+        if (fuzzyMatch(inputNormalized, firstName, 70) ||
+            fuzzyMatch(inputNormalized, lastName, 70)) {
+            console.log(`[Verification] ✓ Fuzzy match found (case-insensitive)`);
             return true;
         }
     }
