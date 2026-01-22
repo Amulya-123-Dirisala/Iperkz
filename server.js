@@ -517,15 +517,35 @@ function formatDriverName(deliveryAssociate) {
 async function formatOrderResponse(order) {
     const items = order.menuList || [];
     
-    // Format all items with price and quantity
-    let itemsStr = '';
-    if (items.length > 0) {
-        itemsStr = items.map(item => {
+    // Find unavailable items (items marked as not available, out of stock, or substituted)
+    const unavailableItems = items.filter(item => {
+        // Check various flags that might indicate unavailability
+        return item.isNotAvailable || 
+               item.notAvailable || 
+               item.outOfStock || 
+               item.isOutOfStock ||
+               item.unavailable ||
+               item.status === 'NOT_AVAILABLE' ||
+               item.status === 'OUT_OF_STOCK' ||
+               item.substituted ||
+               item.isSubstituted;
+    });
+    
+    // Format unavailable items section
+    let unavailableSection = '';
+    if (unavailableItems.length > 0) {
+        const unavailableStr = unavailableItems.map(item => {
             const qty = item.count || 1;
-            const price = (item.salePrice || 0).toFixed(2);
-            const total = (qty * (item.salePrice || 0)).toFixed(2);
-            return `• ${item.menuItemName} x${qty} @ $${price} = $${total}`;
+            return `• ❌ ${item.menuItemName} x${qty}${item.substituteItem ? ` → Substituted with: ${item.substituteItem}` : ''}`;
         }).join('\n');
+        
+        unavailableSection = `
+━━━━━━━━━━━━━━━━━━━━━━
+⚠️ **Unavailable Items (${unavailableItems.length})**
+━━━━━━━━━━━━━━━━━━━━━━
+${unavailableStr}
+
+💡 These items were not available. You'll be refunded for any items not substituted.`;
     }
     
     // Delivery proof image (photo taken at delivery)
@@ -740,15 +760,12 @@ ${progressTimeline}
 ${order.deliveryInstructions ? `**Delivery Instructions:** ${order.deliveryInstructions}` : ''}
 ${order.specialInstructions ? `**Special Instructions:** ${order.specialInstructions}` : ''}
 ${deliveryTrackingSection}
-
-━━━━━━━━━━━━━━━━━━━━━━
-🛒 **Items Ordered (${items.length})**
-━━━━━━━━━━━━━━━━━━━━━━
-${itemsStr || 'No items found'}
+${unavailableSection}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 💰 **Payment Summary**
 ━━━━━━━━━━━━━━━━━━━━━━
+**Items:** ${items.length} items
 **Subtotal:** $${subtotal.toFixed(2)}
 **Tax:** $${tax.toFixed(2)}
 **Delivery Fee:** $${deliveryFee.toFixed(2)}
