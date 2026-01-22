@@ -297,7 +297,7 @@ async function fetchTodaysOrders() {
         return todaysOrdersCache;
     }
     
-    console.log(`[API] Fetching today's orders from iPerkz...`);
+    console.log(`[API] Fetching today's orders from: ${TODAYS_ORDERS_API}`);
     
     try {
         const response = await fetch(TODAYS_ORDERS_API, {
@@ -313,6 +313,14 @@ async function fetchTodaysOrders() {
             todaysOrdersCache = data.items;
             todaysOrdersFetchTime = now;
             console.log(`[API] Fetched ${todaysOrdersCache.length} today's orders successfully`);
+            
+            // Log sample driver assignments for debugging
+            const withDrivers = todaysOrdersCache.filter(o => o.deliveryAssociate && o.deliveryAssociate !== '""' && o.deliveryAssociate !== '');
+            console.log(`[API] Orders with driver assignments: ${withDrivers.length}`);
+            if (withDrivers.length > 0) {
+                console.log(`[API] Sample driver assignment: Order #${withDrivers[0].customerOrderId} -> ${withDrivers[0].deliveryAssociate}`);
+            }
+            
             return todaysOrdersCache;
         }
     } catch (error) {
@@ -671,17 +679,36 @@ function getOrderType(takeOut) {
 
 // Format driver/route name for display
 function formatDriverName(deliveryAssociate) {
-    if (!deliveryAssociate || deliveryAssociate === '""' || deliveryAssociate === '') {
+    console.log(`[DRIVER] formatDriverName input: "${deliveryAssociate}" (type: ${typeof deliveryAssociate})`);
+    
+    // Check for empty/null values - handle various empty formats from API
+    if (!deliveryAssociate || 
+        deliveryAssociate === '""' || 
+        deliveryAssociate === '' ||
+        deliveryAssociate === '\"\"' ||
+        deliveryAssociate.trim() === '' ||
+        deliveryAssociate.trim() === '""') {
+        console.log(`[DRIVER] Returning null - empty value detected`);
         return null;
     }
-    // Parse route name like "giga-north-1.19.26" or "kranthi-west-1.19.26"
-    const cleaned = deliveryAssociate.replace(/"/g, '');
+    
+    // Parse route name like "giga-north-1.19.26" or "kranthi-west-1.19.26" or "Jag-edison-1.22.26"
+    const cleaned = deliveryAssociate.replace(/"/g, '').trim();
+    console.log(`[DRIVER] Cleaned value: "${cleaned}"`);
+    
+    if (!cleaned) {
+        console.log(`[DRIVER] Returning null - cleaned value is empty`);
+        return null;
+    }
+    
     const parts = cleaned.split('-');
     if (parts.length >= 2) {
         const driverName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
         const zone = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+        console.log(`[DRIVER] Parsed: driver="${driverName}", zone="${zone}", route="${cleaned}"`);
         return { driver: driverName, zone: zone, route: cleaned };
     }
+    console.log(`[DRIVER] Single part driver name: "${cleaned}"`);
     return { driver: cleaned, zone: 'N/A', route: cleaned };
 }
 
