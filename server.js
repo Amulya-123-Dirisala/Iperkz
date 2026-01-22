@@ -66,6 +66,7 @@ app.use((req, res, next) => {
 
 // iPerkz API Configuration
 const ORDERS_API_URL = 'https://delivery-routes.vercel.app/api/orders-by-criteria';
+const TODAYS_ORDERS_API = 'https://www.iperkz.com/api/todaysorders'; // Today's orders API
 const DRIVER_LOCATION_API = 'https://delivery-routes.vercel.app/api/driver-location';
 const STORE_ID = '25';
 const IOS_APP = 'https://apps.apple.com/us/app/iperkz/id1512501611';
@@ -75,6 +76,11 @@ const ANDROID_APP = 'https://play.google.com/store/apps/details?id=com.appisoft.
 let ordersCache = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 30000; // 30 seconds
+
+// Cache for today's orders (refreshes more frequently for live tracking)
+let todaysOrdersCache = null;
+let todaysOrdersFetchTime = 0;
+const TODAYS_CACHE_DURATION = 10000; // 10 seconds for live updates
 
 // Customer verification sessions (phone/email -> verified order IDs)
 // Using Map with expiration for security
@@ -229,6 +235,121 @@ async function fetchOrders() {
     }
     
     return ordersCache || [];
+}
+
+// Fetch TODAY's orders from iPerkz API (for live tracking)
+async function fetchTodaysOrders() {
+    const now = Date.now();
+    
+    if (todaysOrdersCache && (now - todaysOrdersFetchTime) < TODAYS_CACHE_DURATION) {
+        console.log(`[API] Returning ${todaysOrdersCache.length} cached today's orders`);
+        return todaysOrdersCache;
+    }
+    
+    console.log(`[API] Fetching today's orders from iPerkz...`);
+    
+    try {
+        const response = await fetch(TODAYS_ORDERS_API, {
+            method: 'GET',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        const data = await response.json();
+        
+        if (data && data.items) {
+            todaysOrdersCache = data.items;
+            todaysOrdersFetchTime = now;
+            console.log(`[API] Fetched ${todaysOrdersCache.length} today's orders successfully`);
+            return todaysOrdersCache;
+        }
+    } catch (error) {
+        console.error('[API] Error fetching today\'s orders:', error.message);
+    }
+    
+    return todaysOrdersCache || [];
+}
+
+// Get order with preference for today's orders (more up-to-date status)
+async function getOrderWithLiveStatus(orderId) {
+    // First check today's orders (most current status)
+    const todaysOrders = await fetchTodaysOrders();
+    let order = todaysOrders.find(o => o.customerOrderId === parseInt(orderId));
+    
+    if (order) {
+        console.log(`[API] Found order #${orderId} in today's orders - Status: ${order.orderStatus}`);
+        order._source = 'todays';
+        return order;
+    }
+    
+    // Fall back to regular orders cache
+    order = await findOrderById(orderId);
+    if (order) {
+        order._source = 'historical';
+    }
+    return order;
+}
+
+// Get packing progress for an order
+function getPackingProgress(order) {
+    // Based on order status and timing
+    const status = order.orderStatus;
+    const items = order.menuList || [];
+    const totalItems = items.length;
+    
+    if (status === 'PLACED') {
+        return {
+            stage: 'queued',
+            percent: 0,
+            message: '⏳ Your order is in queue waiting to be packed',
+            itemsPacked: 0,
+            totalItems: totalItems,
+            estimatedMinutes: null
+        };
+    }
+    
+    if (status === 'STARTED') {
+        // Simulate packing progress based on items and time
+        const startTime = order.orderProcessStartTime ? new Date(order.orderProcessStartTime) : null;
+        let packingPercent = 25; // Default starting
+        
+        if (startTime) {
+            const minutesElapsed = (Date.now() - startTime.getTime()) / 60000;
+            // Assume ~2 minutes per 5 items
+            const estimatedTotalMinutes = Math.max(5, (totalItems / 5) * 2);
+            packingPercent = Math.min(95, Math.round((minutesElapsed / estimatedTotalMinutes) * 100));
+        }
+        
+        return {
+            stage: 'packing',
+            percent: packingPercent,
+            message: `📦 Your order is being packed (${packingPercent}% complete)`,
+            itemsPacked: Math.round((packingPercent / 100) * totalItems),
+            totalItems: totalItems,
+            estimatedMinutes: Math.max(2, Math.round((100 - packingPercent) / 10)),
+            packer: order.packingAssociate || null
+        };
+    }
+    
+    if (status === 'COMPLETED' || status === 'OUT_FOR_DELIVERY' || status === 'DELIVERED') {
+        return {
+            stage: 'completed',
+            percent: 100,
+            message: '✅ Packing complete!',
+            itemsPacked: totalItems,
+            totalItems: totalItems,
+            estimatedMinutes: 0
+        };
+    }
+    
+    return {
+        stage: 'unknown',
+        percent: 0,
+        message: 'Status unknown',
+        itemsPacked: 0,
+        totalItems: totalItems
+    };
 }
 
 // Fetch driver locations from API
@@ -638,21 +759,30 @@ ${directionsUrl ? `🚗 Get Directions: ${directionsUrl}` : ''}
 
 💡 Your order will be assigned to a driver once packing begins.`;
     } else if (order.orderStatus === 'STARTED') {
+        // Get packing progress
+        const packingProgress = getPackingProgress(order);
+        const progressBar = '█'.repeat(Math.floor(packingProgress.percent/10)) + '░'.repeat(10-Math.floor(packingProgress.percent/10));
+        
         deliveryTrackingSection = `
 ━━━━━━━━━━━━━━━━━━━━━━
-🚚 **Delivery Tracking**
+📦 **LIVE PACKING PROGRESS**
 ━━━━━━━━━━━━━━━━━━━━━━
-**Packing Status:** 📦 Being packed${packingAssociate ? ` by ${packingAssociate}` : ''}
+🟠 **Your order is being packed!**
+
+[${progressBar}] ${packingProgress.percent}%
+📊 Progress: ${packingProgress.itemsPacked}/${packingProgress.totalItems} items
+${packingProgress.packer ? `👤 Packed by: ${packingProgress.packer}` : ''}
+${packingProgress.estimatedMinutes ? `⏱️ Est. ${packingProgress.estimatedMinutes} min remaining` : ''}
+
 **Driver Assignment:** ⏳ Pending
 **Route:** ⏳ Will be assigned after packing
-
-⏱️ **Estimated Delivery:**
-${estimate.message}
 
 📍 **Delivery Location:**
 ${order.address || 'N/A'}
 ${mapsUrl ? `🗺️ View on Map: ${mapsUrl}` : ''}
-${directionsUrl ? `🚗 Get Directions: ${directionsUrl}` : ''}`;
+${directionsUrl ? `🚗 Get Directions: ${directionsUrl}` : ''}
+
+💡 Click the "📋 Packing Status" button below for real-time packing updates!`;
     } else if (order.orderStatus === 'COMPLETED' && driverInfo) {
         deliveryTrackingSection = `
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -704,7 +834,7 @@ ${driverTrackingUrl}
 📊 **Route Progress:**
 ${estimate.stopsAway === 0 ? '🎉 You are NEXT!' : `The driver has ${estimate.stopsAway} stop${estimate.stopsAway > 1 ? 's' : ''} before yours.`}
 ${liveRouteSection}
-💡 Click the tracking link above to see the driver's current location!`;
+💡 Click the "🚗 Track Driver" button below for real-time driver location!`;
     } else if (driverInfo) {
         const driverTrackingUrl = `https://delivery-routes.vercel.app/driver`;
         deliveryTrackingSection = `
@@ -1406,6 +1536,80 @@ app.get('/api/driver-location/:orderId', apiLimiter, async (req, res) => {
             progressPercent: routeProgress.progressPercent,
             currentStopSeq: routeProgress.currentStopSeq
         } : null
+    });
+});
+
+// Get packing status for a specific order (Live Packing Tracking)
+app.get('/api/packing-status/:orderId', apiLimiter, async (req, res) => {
+    const orderId = req.params.orderId;
+    const sessionId = req.query.sessionId || req.headers['x-session-id'] || 'default-session';
+    console.log(`[Track] Packing status request for order #${orderId}`);
+    
+    // Check if session is verified for this order
+    const verifiedOrders = customerSessions.get(sessionId);
+    if (!verifiedOrders || !verifiedOrders.has(orderId)) {
+        res.json({ 
+            success: false, 
+            error: 'Please verify your identity first',
+            requiresVerification: true,
+            code: 'VERIFICATION_REQUIRED'
+        });
+        return;
+    }
+    
+    // Get order from today's orders for most up-to-date status
+    const order = await getOrderWithLiveStatus(orderId);
+    
+    if (!order) {
+        res.json({ success: false, error: 'Order not found', code: 'ORDER_NOT_FOUND' });
+        return;
+    }
+    
+    // Get packing progress
+    const packingProgress = getPackingProgress(order);
+    
+    // Get driver info if assigned
+    const driverInfo = formatDriverName(order.deliveryAssociate);
+    
+    // Determine appropriate message based on status
+    let statusMessage = '';
+    if (order.orderStatus === 'PLACED') {
+        statusMessage = 'Your order is in queue and will be packed soon!';
+    } else if (order.orderStatus === 'STARTED') {
+        statusMessage = 'Our team is carefully packing your items!';
+    } else if (order.orderStatus === 'COMPLETED') {
+        statusMessage = 'Packing complete! Waiting for driver to start route.';
+    } else if (order.orderStatus === 'OUT_FOR_DELIVERY') {
+        statusMessage = 'Your order has been packed and is on the way!';
+    } else if (order.orderStatus === 'DELIVERED') {
+        statusMessage = 'Your order has been delivered!';
+    } else if (order.orderStatus === 'CANCELLED') {
+        statusMessage = 'This order was cancelled.';
+    }
+    
+    res.json({
+        success: true,
+        order: {
+            orderId: order.customerOrderId,
+            status: order.orderStatus,
+            address: order.address,
+            deliverySeq: order.deliverySeq,
+            customerName: `${order.firstName || ''} ${order.lastName || ''}`.trim(),
+            driver: driverInfo ? driverInfo.driver : null,
+            zone: driverInfo ? driverInfo.zone : null,
+            totalItems: (order.menuList || []).length,
+            scheduledDelivery: order.requestedDeliveryDateString || order.requestedDeliveryDateStr
+        },
+        packing: {
+            stage: packingProgress.stage,
+            percent: packingProgress.percent,
+            message: packingProgress.message,
+            itemsPacked: packingProgress.itemsPacked,
+            totalItems: packingProgress.totalItems,
+            estimatedMinutes: packingProgress.estimatedMinutes,
+            packer: packingProgress.packer || order.packingAssociate
+        },
+        statusMessage: statusMessage
     });
 });
 

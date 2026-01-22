@@ -486,6 +486,153 @@
             text-align: right;
         }
 
+        /* Live Packing Progress Modal */
+        .packing-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1001;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .packing-modal.show {
+            display: flex;
+        }
+
+        .packing-container {
+            background: white;
+            border-radius: 15px;
+            width: 95%;
+            max-width: 450px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .packing-header {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .packing-header h3 {
+            margin: 0;
+            font-size: 16px;
+        }
+
+        .packing-header .live-badge {
+            background: #f44336;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            animation: pulse 1.5s infinite;
+        }
+
+        .packing-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 28px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .packing-content {
+            padding: 20px;
+        }
+
+        .packing-animation {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .packing-icon {
+            font-size: 80px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .packing-progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .packing-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #FF9800, #FFC107);
+            border-radius: 10px;
+            transition: width 1s ease;
+        }
+
+        .packing-status-text {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            margin: 15px 0;
+        }
+
+        .packing-details {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+        }
+
+        .packing-details p {
+            margin: 8px 0;
+            font-size: 14px;
+            color: #333;
+        }
+
+        .packing-items-list {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .packing-item {
+            display: flex;
+            align-items: center;
+            padding: 5px 0;
+            font-size: 13px;
+            border-bottom: 1px solid #ffe0b2;
+        }
+
+        .packing-item:last-child {
+            border-bottom: none;
+        }
+
+        .packing-item.packed {
+            color: #4CAF50;
+        }
+
+        .packing-item.packing {
+            color: #FF9800;
+            font-weight: bold;
+        }
+
+        .packing-item.pending {
+            color: #999;
+        }
+
         /* Input Area */
         .chat-input {
             padding: 15px 20px;
@@ -590,9 +737,9 @@
 
         <div class="quick-actions">
             <button class="quick-btn" onclick="sendQuickMessage('Track my order')">📦 Track Order</button>
-            <button class="quick-btn" onclick="openMapPrompt()">🗺️ View Map</button>
+            <button class="quick-btn" onclick="openPackingTracker()">📋 Packing Status</button>
             <button class="quick-btn" onclick="openDriverTracking()">🚗 Track Driver</button>
-            <button class="quick-btn" onclick="sendQuickMessage('Delivery information')">🚚 Delivery Info</button>
+            <button class="quick-btn" onclick="openMapPrompt()">🗺️ View Map</button>
             <button class="quick-btn" onclick="sendQuickMessage('Refund policy')">💰 Refunds</button>
             <button class="quick-btn" onclick="sendQuickMessage('Download app')">📱 Get App</button>
         </div>
@@ -647,6 +794,31 @@
                     <div class="stops-progress-bar" id="stopsProgressBar" style="width: 0%"></div>
                 </div>
                 <div class="last-updated" id="lastUpdated">Updating...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Packing Progress Modal -->
+    <div class="packing-modal" id="packingModal">
+        <div class="packing-container">
+            <div class="packing-header">
+                <div>
+                    <h3>📦 Live Packing Progress</h3>
+                    <span class="live-badge">● LIVE</span>
+                </div>
+                <button class="packing-close" onclick="closePackingModal()">&times;</button>
+            </div>
+            <div class="packing-content">
+                <div class="packing-animation">
+                    <div class="packing-icon" id="packingIcon">📦</div>
+                </div>
+                <div class="packing-progress-bar">
+                    <div class="packing-progress-fill" id="packingProgressFill" style="width: 0%"></div>
+                </div>
+                <div class="packing-status-text" id="packingStatusText">Loading...</div>
+                <div class="packing-details" id="packingDetails">
+                    <!-- Packing details will be inserted here -->
+                </div>
             </div>
         </div>
     </div>
@@ -1136,6 +1308,175 @@
         // Close driver modal on background click
         document.getElementById('driverModal').addEventListener('click', function(e) {
             if (e.target === this) closeDriverModal();
+        });
+
+        // ==================== LIVE PACKING TRACKING ====================
+        let packingInterval = null;
+        let currentPackingOrderId = null;
+
+        async function openPackingTracker() {
+            if (lastOrderId) {
+                try {
+                    const response = await fetch(`/api/packing-status/${lastOrderId}?sessionId=${sessionId}`);
+                    const data = await response.json();
+                    
+                    if (data.requiresVerification) {
+                        addMessage('🔐 Please verify your identity first by entering the order ID in the chat.', false);
+                        messageInput.value = lastOrderId;
+                        messageInput.focus();
+                        return;
+                    }
+                    
+                    if (data.success) {
+                        openPackingModal(data);
+                    } else {
+                        addMessage(`📦 **Packing Status**\n\n${data.message || 'Unable to get packing status for this order.'}`, false);
+                    }
+                } catch (error) {
+                    console.error('Error fetching packing status:', error);
+                    addMessage('❌ Unable to fetch packing status. Please try again.', false);
+                }
+            } else {
+                const orderId = prompt('Enter your Order ID to track packing progress:');
+                if (orderId && /^\d{5,6}$/.test(orderId.trim())) {
+                    lastOrderId = orderId.trim();
+                    openPackingTracker();
+                } else if (orderId) {
+                    addMessage('⚠️ Please enter a valid 5-6 digit Order ID.', false);
+                }
+            }
+        }
+
+        function openPackingModal(data) {
+            const modal = document.getElementById('packingModal');
+            currentPackingOrderId = data.order.orderId;
+            
+            modal.classList.add('show');
+            updatePackingStatus(data);
+            
+            // Start real-time updates every 5 seconds for packing
+            if (packingInterval) clearInterval(packingInterval);
+            packingInterval = setInterval(() => {
+                refreshPackingStatus();
+            }, 5000);
+        }
+
+        function updatePackingStatus(data) {
+            const packingIcon = document.getElementById('packingIcon');
+            const progressFill = document.getElementById('packingProgressFill');
+            const statusText = document.getElementById('packingStatusText');
+            const details = document.getElementById('packingDetails');
+            
+            const packing = data.packing;
+            const order = data.order;
+            
+            // Update progress bar
+            progressFill.style.width = `${packing.percent}%`;
+            
+            // Update icon based on stage
+            if (packing.stage === 'queued') {
+                packingIcon.textContent = '⏳';
+                packingIcon.style.animation = 'pulse 1.5s infinite';
+            } else if (packing.stage === 'packing') {
+                packingIcon.textContent = '📦';
+                packingIcon.style.animation = 'bounce 1s infinite';
+            } else if (packing.stage === 'completed') {
+                packingIcon.textContent = '✅';
+                packingIcon.style.animation = 'none';
+            }
+            
+            // Update status text
+            statusText.textContent = packing.message;
+            
+            // Build details HTML
+            let detailsHtml = `
+                <p><strong>📋 Order #${order.orderId}</strong></p>
+                <p>📊 Progress: ${packing.percent}% (${packing.itemsPacked}/${packing.totalItems} items)</p>
+            `;
+            
+            if (packing.packer) {
+                detailsHtml += `<p>👤 Packed by: ${packing.packer}</p>`;
+            }
+            
+            if (packing.estimatedMinutes && packing.stage !== 'completed') {
+                detailsHtml += `<p>⏱️ Est. ${packing.estimatedMinutes} min remaining</p>`;
+            }
+            
+            // Status-specific messages
+            if (packing.stage === 'queued') {
+                detailsHtml += `
+                    <p style="margin-top: 10px; color: #666; font-size: 13px;">
+                        💡 Your order is in queue. Packing will start soon!
+                    </p>`;
+            } else if (packing.stage === 'packing') {
+                detailsHtml += `
+                    <p style="margin-top: 10px; color: #FF9800; font-size: 13px;">
+                        🔔 We're carefully packing your items!
+                    </p>`;
+            } else if (packing.stage === 'completed') {
+                detailsHtml += `
+                    <p style="margin-top: 10px; color: #4CAF50; font-size: 13px; font-weight: bold;">
+                        🎉 Packing complete! Your order is ready for delivery.
+                    </p>`;
+                
+                // If driver assigned, show driver info
+                if (order.driver) {
+                    detailsHtml += `
+                        <p style="margin-top: 5px;">
+                            🚗 Driver: ${order.driver}<br>
+                            📍 Your stop: #${order.deliverySeq} in route
+                        </p>
+                        <button onclick="closePackingModal(); openDriverTracking();" 
+                                style="margin-top: 10px; width: 100%; padding: 10px; background: #2196F3; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;">
+                            🚗 Track Driver Live →
+                        </button>`;
+                }
+            }
+            
+            details.innerHTML = detailsHtml;
+        }
+
+        async function refreshPackingStatus() {
+            if (!currentPackingOrderId) return;
+            
+            try {
+                const response = await fetch(`/api/packing-status/${currentPackingOrderId}?sessionId=${sessionId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    updatePackingStatus(data);
+                    
+                    // Auto-close if delivered or cancelled
+                    if (data.packing.stage === 'completed' && data.order.status === 'OUT_FOR_DELIVERY') {
+                        // Offer to switch to driver tracking
+                        setTimeout(() => {
+                            if (confirm('🚗 Your order is now out for delivery! Would you like to track the driver?')) {
+                                closePackingModal();
+                                lastOrderId = currentPackingOrderId;
+                                openDriverTracking();
+                            }
+                        }, 2000);
+                    }
+                }
+            } catch (error) {
+                console.error('Error refreshing packing status:', error);
+            }
+        }
+
+        function closePackingModal() {
+            const modal = document.getElementById('packingModal');
+            modal.classList.remove('show');
+            
+            if (packingInterval) {
+                clearInterval(packingInterval);
+                packingInterval = null;
+            }
+            currentPackingOrderId = null;
+        }
+
+        // Close packing modal on background click
+        document.getElementById('packingModal').addEventListener('click', function(e) {
+            if (e.target === this) closePackingModal();
         });
     </script>
 </body>
