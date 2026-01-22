@@ -789,6 +789,47 @@ function extractOrderId(message) {
     return null;
 }
 
+// Extract order ID and verification info from single message
+// Supports formats like: "64564 Sonia", "64564, john@email.com", "order 64564 phone 1234567890"
+function extractOrderAndVerification(message) {
+    const msg = message.trim();
+    
+    // Pattern 1: Just order ID (5-6 digits)
+    if (/^\d{5,6}$/.test(msg)) {
+        return { orderId: msg, verificationInfo: null };
+    }
+    
+    // Pattern 2: Order ID followed by name/email/phone
+    // "64564 Sonia" or "64564, john@email.com" or "64564 7325551234"
+    const pattern1 = /^(\d{5,6})[\s,]+(.+)$/;
+    const match1 = msg.match(pattern1);
+    if (match1) {
+        return { orderId: match1[1], verificationInfo: match1[2].trim() };
+    }
+    
+    // Pattern 3: "order 64564 name Sonia" or "track 64564 email john@test.com"
+    const pattern2 = /(?:order|track|status)?\s*#?(\d{5,6})[\s,]+(?:name|phone|email|verify)?[\s:]*(.+)/i;
+    const match2 = msg.match(pattern2);
+    if (match2) {
+        return { orderId: match2[1], verificationInfo: match2[2].trim() };
+    }
+    
+    // Pattern 4: Any 5-6 digit number in the message with additional text
+    const orderMatch = msg.match(/\b(\d{5,6})\b/);
+    if (orderMatch) {
+        // Extract everything that's not the order ID as potential verification
+        const remaining = msg.replace(orderMatch[0], '').replace(/[,\s]+/g, ' ').trim();
+        // Remove common keywords
+        const cleaned = remaining.replace(/\b(order|track|status|id|my|is|where|#|no)\b/gi, '').trim();
+        if (cleaned.length >= 2) {
+            return { orderId: orderMatch[1], verificationInfo: cleaned };
+        }
+        return { orderId: orderMatch[1], verificationInfo: null };
+    }
+    
+    return { orderId: null, verificationInfo: null };
+}
+
 // Intent detection
 function isGreeting(msg) {
     const greetings = ['hi', 'hello', 'hey', 'namaste', 'namaskar', 'good morning', 'good afternoon', 'good evening'];
@@ -806,7 +847,11 @@ function isThanks(msg) {
 }
 
 function isOrderQuery(msg) {
-    if (/^\d{3,10}$/.test(msg.trim())) return true;
+    // Just order ID
+    if (/^\d{5,6}$/.test(msg.trim())) return true;
+    // Order ID with verification info (e.g., "64564 Sonia")
+    if (/^\d{5,6}[\s,]+\S+/.test(msg.trim())) return true;
+    // Keywords
     const keywords = ['order', 'track', 'status', 'where is my', 'my order', 'tracking'];
     return keywords.some(k => msg.includes(k));
 }
@@ -831,17 +876,25 @@ const pendingVerifications = new Map();
 
 // Response handlers
 async function handleOrderQuery(message, sessionId) {
-    const orderId = extractOrderId(message);
+    // Extract both order ID and verification info from single message
+    const { orderId, verificationInfo } = extractOrderAndVerification(message);
     
     if (!orderId) {
-        return `To track your order, I'll need your Order ID. You can find it in:
+        return `To track your order, I'll need your **Order ID** and **verification info** in one step.
+
+**Quick Format:** \`Order ID + Your Name/Phone/Email\`
+
+**Examples:**
+• \`64531 John\`
+• \`64531, john@email.com\`
+• \`64531 7325551234\`
+
+You can find your Order ID in:
 • Your order confirmation notification
 • 'My Orders' section in the iPerkz app
 • Order confirmation email
 
-Please share your Order ID (e.g., 64531) and I'll check the status for you! 📦
-
-💡 **Tip:** Download the iPerkz app for real-time order tracking!`;
+📦 Just type your order ID and name together!`;
     }
     
     const order = await findOrderById(orderId);
@@ -870,26 +923,60 @@ Would you like to try a different order ID?`;
         return formatOrderResponse(order);
     }
     
-    // Store pending verification
+    // If verification info was provided in same message, try to verify immediately
+    if (verificationInfo) {
+        console.log(`[Verification] Single-step attempt for order #${orderId} with: "${verificationInfo}"`);
+        
+        if (verifyCustomerOwnership(order, verificationInfo)) {
+            // Verification successful - single step!
+            let verified = customerSessions.get(sessionId);
+            if (!verified) {
+                verified = new Set();
+                customerSessions.set(sessionId, verified);
+            }
+            verified.add(orderId);
+            
+            console.log(`[Verification] ✓ Single-step verification successful for order #${orderId}`);
+            
+            return `✅ **Verified!** Here's your order:\n\n` + await formatOrderResponse(order);
+        } else {
+            // Verification failed - but still store pending for retry
+            pendingVerifications.set(sessionId, { orderId, order });
+            
+            console.log(`[Verification] ✗ Single-step verification failed for order #${orderId}`);
+            
+            return `❌ **Verification Failed**
+
+Order #${orderId} found, but "${verificationInfo}" doesn't match our records.
+
+**Please try again with:**
+• Your **first name** as on the order
+• Your **phone number** (or last 4 digits)
+• Your **email address**
+
+**Example:** \`${orderId} YourFirstName\`
+
+🔒 This protects your order information.`;
+        }
+    }
+    
+    // No verification info provided - prompt for it (but encourage single-step next time)
     pendingVerifications.set(sessionId, { orderId, order });
     
-    // Mask all customer info for security - hide everything
+    // Mask all customer info for security
     const maskedPhone = order.phone ? `***-***-****` : 'N/A';
     const maskedEmail = order.email ? `***@***` : 'N/A';
     const maskedName = order.firstName ? `${'*'.repeat(order.firstName.length)}` : '***';
     
-    return `🔐 **Verification Required**
-
-For your security, I need to verify you own order #${orderId}.
+    return `🔐 **Verification Required** for Order #${orderId}
 
 **Order found for:** ${maskedName}
 **Phone on file:** ${maskedPhone}
 **Email on file:** ${maskedEmail}
 
-Please reply with ONE of the following to verify:
-• Your **phone number** (or last 4 digits)
-• Your **email address**
-• Your **first name**
+**Quick verify:** Reply with your **first name**, **phone**, or **email**
+
+💡 **Tip:** Next time, enter both together like: \`${orderId} YourName\`
 
 🔒 This protects your order information from unauthorized access.`;
 }
