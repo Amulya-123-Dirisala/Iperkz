@@ -2050,9 +2050,10 @@ app.get('/api/health', (req, res) => {
     res.json({ 
         status: 'ok',
         service: 'iPerkz Support Agent',
-        version: '2.0.0',
+        version: '2.1.0', // Updated version to verify deployment
         apiVersion: API_VERSION,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        todaysOrdersApi: TODAYS_ORDERS_API
     });
 });
 
