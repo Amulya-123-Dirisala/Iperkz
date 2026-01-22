@@ -820,9 +820,11 @@
                     const order = data.order;
                     mapOrderId.textContent = orderId;
                     
-                    // Set map to delivery address
-                    const address = encodeURIComponent(order.address || 'New Jersey');
-                    mapFrame.src = `https://www.google.com/maps?q=${address}&output=embed`;
+                    // Show directions from store to customer address
+                    const storeAddress = encodeURIComponent(order.storeAddress || 'iPerkz Edison NJ');
+                    const customerAddress = encodeURIComponent(order.address || 'New Jersey');
+                    // Use Google Maps directions embed
+                    mapFrame.src = `https://www.google.com/maps/embed/v1/directions?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&origin=${storeAddress}&destination=${customerAddress}&mode=driving`;
                     
                     // Build tracking info
                     const steps = ['Order Placed', 'Packing', 'Ready', 'Out for Delivery', 'Delivered'];

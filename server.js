@@ -761,21 +761,6 @@ ${order.deliveryInstructions ? `**Delivery Instructions:** ${order.deliveryInstr
 ${order.specialInstructions ? `**Special Instructions:** ${order.specialInstructions}` : ''}
 ${deliveryTrackingSection}
 ${unavailableSection}
-
-━━━━━━━━━━━━━━━━━━━━━━
-💰 **Payment Summary**
-━━━━━━━━━━━━━━━━━━━━━━
-**Items:** ${items.length} items
-**Subtotal:** $${subtotal.toFixed(2)}
-**Tax:** $${tax.toFixed(2)}
-**Delivery Fee:** $${deliveryFee.toFixed(2)}
-**Tip:** $${tip.toFixed(2)}
-${discount > 0 ? `**Discount:** -$${discount.toFixed(2)}` : ''}
-${perkzUsed > 0 ? `**Perkz Used:** -$${perkzUsed.toFixed(2)}` : ''}
-**Transaction Fee:** $${transactionFee.toFixed(2)}
-**━━━━━━━━━━━━━━━━━━━━**
-**Total Charged:** $${total.toFixed(2)}
-**Payment Method:** ${order.paymentMode || 'N/A'}
 ${deliveryProofSection}
 
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -880,6 +865,11 @@ function isDeliveryQuery(msg) {
 
 function isRefundQuery(msg) {
     const keywords = ['refund', 'cancel', 'money back', 'return'];
+    return keywords.some(k => msg.includes(k));
+}
+
+function isPaymentQuery(msg) {
+    const keywords = ['payment', 'paid', 'charge', 'total', 'amount', 'bill', 'receipt', 'invoice', 'price', 'cost', 'how much'];
     return keywords.some(k => msg.includes(k));
 }
 
@@ -1135,11 +1125,99 @@ function getDefaultResponse() {
     return `I'm here to help! Here's what I can assist you with:
 
 • **Track Order** - Share your order ID
+• **Payment Info** - Ask about your payment details
 • **Delivery Info** - Ask about delivery times
 • **Refunds** - Cancel or return orders
 • **App Download** - Get our mobile app
 
 Please share your Order ID or let me know how I can help!`;
+}
+
+// Handle payment query - shows payment details for verified orders
+async function handlePaymentQuery(message, sessionId) {
+    // Find order ID from message or use last verified order
+    const { orderId } = extractOrderAndVerification(message);
+    
+    // Get verified orders for this session
+    const verifiedOrders = customerSessions.get(sessionId);
+    
+    // If specific order ID mentioned and verified
+    if (orderId && verifiedOrders && verifiedOrders.has(orderId)) {
+        const order = await findOrderById(orderId);
+        if (order) {
+            return formatPaymentResponse(order);
+        }
+    }
+    
+    // If they have verified orders, use the most recent one
+    if (verifiedOrders && verifiedOrders.size > 0) {
+        const lastOrderId = Array.from(verifiedOrders).pop();
+        const order = await findOrderById(lastOrderId);
+        if (order) {
+            return formatPaymentResponse(order);
+        }
+    }
+    
+    // No verified orders
+    return `💰 **Payment Information**
+
+To view your payment details, I need to verify your order first.
+
+Please enter your **Order ID + Name** (e.g., \`64531 John\`)
+
+Once verified, I can show you:
+• Total amount charged
+• Payment method used
+• Itemized breakdown
+• Taxes & fees`;
+}
+
+// Format payment details response
+function formatPaymentResponse(order) {
+    const items = order.menuList || [];
+    const subtotal = items.reduce((sum, item) => sum + ((item.salePrice || 0) * (item.count || 1)), 0);
+    const tax = order.tax || 0;
+    const deliveryFee = order.deliveryAmount || 0;
+    const tip = order.tipAmount || 0;
+    const transactionFee = order.transactionFee || 0;
+    const discount = order.discount || 0;
+    const perkzUsed = order.perkzAmt || 0;
+    const total = order.totalSalePrice || 0;
+    
+    // Format items list
+    let itemsStr = '';
+    if (items.length > 0) {
+        itemsStr = items.map(item => {
+            const qty = item.count || 1;
+            const price = (item.salePrice || 0).toFixed(2);
+            const itemTotal = (qty * (item.salePrice || 0)).toFixed(2);
+            return `• ${item.menuItemName} x${qty} @ $${price} = $${itemTotal}`;
+        }).join('\n');
+    }
+    
+    return `💰 **Payment Details - Order #${order.customerOrderId}**
+
+━━━━━━━━━━━━━━━━━━━━━━
+🛒 **Items (${items.length})**
+━━━━━━━━━━━━━━━━━━━━━━
+${itemsStr || 'No items found'}
+
+━━━━━━━━━━━━━━━━━━━━━━
+💵 **Payment Breakdown**
+━━━━━━━━━━━━━━━━━━━━━━
+**Subtotal:** $${subtotal.toFixed(2)}
+**Tax:** $${tax.toFixed(2)}
+**Delivery Fee:** $${deliveryFee.toFixed(2)}
+**Tip:** $${tip.toFixed(2)}
+${discount > 0 ? `**Discount:** -$${discount.toFixed(2)}` : ''}
+${perkzUsed > 0 ? `**Perkz Used:** -$${perkzUsed.toFixed(2)}` : ''}
+**Transaction Fee:** $${transactionFee.toFixed(2)}
+
+**━━━━━━━━━━━━━━━━━━━━**
+**💳 Total Charged:** $${total.toFixed(2)}
+**Payment Method:** ${order.paymentMode || 'N/A'}
+
+Is there anything else I can help you with?`;
 }
 
 // Process message
@@ -1161,6 +1239,7 @@ async function processMessage(message, sessionId) {
     if (isGreeting(msg)) return getGreetingResponse();
     if (isFarewell(msg)) return getFarewellResponse();
     if (isThanks(msg)) return getThanksResponse();
+    if (isPaymentQuery(msg)) return await handlePaymentQuery(message, sessionId);
     if (isOrderQuery(msg)) return await handleOrderQuery(message, sessionId);
     if (isDeliveryQuery(msg)) return getDeliveryResponse();
     if (isRefundQuery(msg)) return getRefundResponse();
