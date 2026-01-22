@@ -66,7 +66,7 @@ app.use((req, res, next) => {
 
 // iPerkz API Configuration
 const ORDERS_API_URL = 'https://delivery-routes.vercel.app/api/orders-by-criteria';
-const TODAYS_ORDERS_API = 'https://www.iperkz.com/api/todaysorders'; // Today's orders API
+const TODAYS_ORDERS_API = 'https://delivery-routes.vercel.app/api/orders'; // Today's orders API with route assignments
 const DRIVER_LOCATION_API = 'https://delivery-routes.vercel.app/api/driver-location';
 const STORE_ID = '25';
 const IOS_APP = 'https://apps.apple.com/us/app/iperkz/id1512501611';
