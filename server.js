@@ -818,14 +818,29 @@ ${rp.lastDeliveredAddress ? `**Last Delivery:** ${rp.lastDeliveredAddress}` : ''
     
     // Build delivery tracking section based on status
     let deliveryTrackingSection = '';
+    
+    // Determine driver assignment text based on actual data
+    let driverAssignmentText = '⏳ Not yet assigned';
+    let routeText = '⏳ Pending route optimization';
+    let stopText = '';
+    
+    if (driverInfo) {
+        driverAssignmentText = `✅ **${driverInfo.driver}** (${driverInfo.zone} Zone)`;
+        routeText = `✅ Route: ${driverInfo.route}`;
+        if (deliverySeq) {
+            stopText = `📍 Your Stop: #${deliverySeq} in route`;
+        }
+    }
+    
     if (order.orderStatus === 'PLACED') {
         deliveryTrackingSection = `
 ━━━━━━━━━━━━━━━━━━━━━━
 🚚 **Delivery Tracking**
 ━━━━━━━━━━━━━━━━━━━━━━
 **Packing Status:** ⏳ Awaiting packing
-**Driver Assignment:** ⏳ Not yet assigned
-**Route:** ⏳ Pending route optimization
+**Driver Assignment:** ${driverAssignmentText}
+**Route:** ${routeText}
+${stopText}
 
 ⏱️ **Estimated Delivery:**
 ${estimate.message}
@@ -835,7 +850,7 @@ ${order.address || 'N/A'}
 ${mapsUrl ? `🗺️ View on Map: ${mapsUrl}` : ''}
 ${directionsUrl ? `🚗 Get Directions: ${directionsUrl}` : ''}
 
-💡 Your order will be assigned to a driver once packing begins.`;
+${driverInfo ? '✅ A driver has been assigned to your order!' : '💡 Your order will be assigned to a driver once packing begins.'}`;
     } else if (order.orderStatus === 'STARTED') {
         // Get packing progress
         const packingProgress = getPackingProgress(order);
@@ -852,8 +867,9 @@ ${directionsUrl ? `🚗 Get Directions: ${directionsUrl}` : ''}
 ${packingProgress.packer ? `👤 Packed by: ${packingProgress.packer}` : ''}
 ${packingProgress.estimatedMinutes ? `⏱️ Est. ${packingProgress.estimatedMinutes} min remaining` : ''}
 
-**Driver Assignment:** ⏳ Pending
-**Route:** ⏳ Will be assigned after packing
+**Driver Assignment:** ${driverAssignmentText}
+**Route:** ${routeText}
+${stopText}
 
 📍 **Delivery Location:**
 ${order.address || 'N/A'}
